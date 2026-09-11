@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.college.elective.mapper.TeacherMapper">
+
+    <sql id="teacherSelect">
+        SELECT t.id, t.user_id, t.teacher_no, t.dept_id, t.title, t.research_area,
+        t.create_time, t.update_time,
+        su.real_name AS realName,
+        su.gender AS gender,
+        su.phone AS phone,
+        su.email AS email,
+        su.status AS status,
+        d.dept_name AS deptName
+        FROM teacher t
+        INNER JOIN sys_user su ON su.id = t.user_id AND su.deleted = 0
+        LEFT JOIN department d ON d.id = t.dept_id AND d.deleted = 0
+    </sql>
+
+    <select id="selectTeacherPage" resultType="com.college.elective.entity.Teacher">
+        <include refid="teacherSelect"/>
+        WHERE t.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (t.teacher_no LIKE CONCAT('%', #{keyword}, '%')
+            OR su.real_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="deptId != null">
+            AND t.dept_id = #{deptId}
+        </if>
+        <if test="title != null and title != ''">
+            AND t.title = #{title}
+        </if>
+        ORDER BY t.teacher_no ASC
+    </select>
+
+    <select id="selectTeacherDetail" resultType="com.college.elective.entity.Teacher">
+        <include refid="teacherSelect"/>
+        WHERE t.deleted = 0 AND t.id = #{id}
+    </select>
+
+</mapper>
