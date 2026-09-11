@@ -1,0 +1,37 @@
+{
+  "name": "college-elective-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "高校选修课管理系统前端",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:prod": "vite build --mode production",
+    "preview": "vite preview --port 4173",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "axios": "^1.7.7",
+    "dayjs": "^1.11.13",
+    "echarts": "^5.5.1",
+    "element-plus": "^2.8.6",
+    "nprogress": "^0.2.0",
+    "pinia": "^2.2.4",
+    "vue": "^3.5.12",
+    "vue-router": "^4.4.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.1.4",
+    "eslint": "^8.57.1",
+    "eslint-plugin-vue": "^9.29.0",
+    "sass": "^1.80.3",
+    "unplugin-auto-import": "^0.18.3",
+    "unplugin-vue-components": "^0.27.4",
+    "vite": "^5.4.10"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
