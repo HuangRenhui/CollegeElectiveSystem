@@ -1,0 +1,44 @@
+# ---------------- Java / Maven ----------------
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.jar
+*.war
+*.class
+*.log
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.properties
+
+# ---------------- IDE ----------------
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+*.swp
+*.swo
+
+# ---------------- Node / 前端 ----------------
+node_modules/
+dist/
+dist-ssr/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+stats.html
+
+# ---------------- 运行与上传目录 ----------------
+logs/
+upload/
+temp/
+*.pid
+
+# ---------------- 系统文件 ----------------
+.DS_Store
+Thumbs.db
+desktop.ini
