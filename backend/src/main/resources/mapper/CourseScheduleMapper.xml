@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.college.elective.mapper.CourseScheduleMapper">
+
+    <sql id="scheduleColumns">
+        cs.id, cs.course_id, cs.semester_id, cs.classroom_id, cs.day_of_week,
+        cs.start_section, cs.end_section, cs.start_week, cs.end_week, cs.week_type,
+        cs.create_time, cs.update_time
+    </sql>
+
+    <select id="selectByCourseId" resultType="com.college.elective.entity.CourseSchedule">
+        SELECT
+        <include refid="scheduleColumns"/>,
+        c.course_name AS courseName,
+        cr.room_no AS roomNo,
+        cr.building AS building
+        FROM course_schedule cs
+        LEFT JOIN course c ON c.id = cs.course_id AND c.deleted = 0
+        LEFT JOIN classroom cr ON cr.id = cs.classroom_id AND cr.deleted = 0
+        WHERE cs.deleted = 0 AND cs.course_id = #{courseId}
+        ORDER BY cs.day_of_week, cs.start_section
+    </select>
+
+    <select id="selectByCourseIds" resultType="com.college.elective.entity.CourseSchedule">
+        SELECT
+        <include refid="scheduleColumns"/>,
+        c.course_name AS courseName,
+        c.course_code AS courseName,
+        tu.real_name AS teacherName,
+        cr.room_no AS roomNo,
+        cr.building AS building
+        FROM course_schedule cs
+        LEFT JOIN course c ON c.id = cs.course_id AND c.deleted = 0
+        LEFT JOIN teacher t ON t.id = c.teacher_id AND t.deleted = 0
+        LEFT JOIN sys_user tu ON tu.id = t.user_id AND tu.deleted = 0
+        LEFT JOIN classroom cr ON cr.id = cs.classroom_id AND cr.deleted = 0
+        WHERE cs.deleted = 0
+        AND cs.course_id IN
+        <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        ORDER BY cs.day_of_week, cs.start_section
+    </select>
+
+    <select id="selectByStudentSelection" resultType="com.college.elective.entity.CourseSchedule">
+        SELECT
+        <include refid="scheduleColumns"/>,
+        c.id AS course_id,
+        c.course_code AS courseName,
+        c.course_name AS courseName
+        FROM course_schedule cs
+        INNER JOIN course_selection sel
+        ON sel.course_id = cs.course_id
+        AND sel.student_id = #{studentId}
+        AND sel.status = 1
+        AND sel.deleted = 0
+        INNER JOIN course c ON c.id = cs.course_id AND c.deleted = 0
+        WHERE cs.deleted = 0
+        AND cs.semester_id = #{semesterId}
+    </select>
+
+    <select id="countTeacherConflict" resultType="int">
+        SELECT COUNT(*)
+        FROM course_schedule cs
+        INNER JOIN course c ON c.id = cs.course_id AND c.deleted = 0
+        WHERE cs.deleted = 0
+        AND cs.semester_id = #{semesterId}
+        AND c.teacher_id = #{teacherId}
+        AND cs.day_of_week = #{dayOfWeek}
+        AND cs.start_section &lt;= #{endSection}
+        AND cs.end_section &gt;= #{startSection}
+        AND cs.start_week &lt;= #{endWeek}
+        AND cs.end_week &gt;= #{startWeek}
+        <if test="excludeCourseId != null">
+            AND c.id != #{excludeCourseId}
+        </if>
+    </select>
+
+    <select id="countClassroomConflict" resultType="int">
+        SELECT COUNT(*)
+        FROM course_schedule cs
+        WHERE cs.deleted = 0
+        AND cs.semester_id = #{semesterId}
+        AND cs.classroom_id = #{classroomId}
+        AND cs.day_of_week = #{dayOfWeek}
+        AND cs.start_section &lt;= #{endSection}
+        AND cs.end_section &gt;= #{startSection}
+        AND cs.start_week &lt;= #{endWeek}
+        AND cs.end_week &gt;= #{startWeek}
+        <if test="excludeCourseId != null">
+            AND cs.course_id != #{excludeCourseId}
+        </if>
+    </select>
+
+</mapper>
