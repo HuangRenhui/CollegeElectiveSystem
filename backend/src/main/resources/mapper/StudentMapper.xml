@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.college.elective.mapper.StudentMapper">
+
+    <sql id="studentSelect">
+        SELECT st.id, st.user_id, st.stu_no, st.dept_id, st.major_id, st.class_name,
+        st.grade_year, st.enroll_year, st.total_credit, st.create_time, st.update_time,
+        su.real_name AS realName,
+        su.gender AS gender,
+        su.phone AS phone,
+        su.email AS email,
+        su.status AS status,
+        d.dept_name AS deptName,
+        m.major_name AS majorName
+        FROM student st
+        INNER JOIN sys_user su ON su.id = st.user_id AND su.deleted = 0
+        LEFT JOIN department d ON d.id = st.dept_id AND d.deleted = 0
+        LEFT JOIN major m ON m.id = st.major_id AND m.deleted = 0
+    </sql>
+
+    <select id="selectStudentPage" resultType="com.college.elective.entity.Student">
+        <include refid="studentSelect"/>
+        WHERE st.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (st.stu_no LIKE CONCAT('%', #{keyword}, '%')
+            OR su.real_name LIKE CONCAT('%', #{keyword}, '%')
+            OR st.class_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="deptId != null">
+            AND st.dept_id = #{deptId}
+        </if>
+        <if test="majorId != null">
+            AND st.major_id = #{majorId}
+        </if>
+        <if test="gradeYear != null">
+            AND st.grade_year = #{gradeYear}
+        </if>
+        ORDER BY st.stu_no ASC
+    </select>
+
+    <select id="selectStudentDetail" resultType="com.college.elective.entity.Student">
+        <include refid="studentSelect"/>
+        WHERE st.deleted = 0 AND st.id = #{id}
+    </select>
+
+</mapper>
