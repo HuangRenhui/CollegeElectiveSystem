@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.college.elective.mapper.CourseGradeMapper">
+
+    <sql id="gradeJoins">
+        LEFT JOIN student st ON st.id = g.student_id AND st.deleted = 0
+        LEFT JOIN sys_user su ON su.id = st.user_id AND su.deleted = 0
+        LEFT JOIN course c ON c.id = g.course_id AND c.deleted = 0
+        LEFT JOIN semester se ON se.id = g.semester_id AND se.deleted = 0
+    </sql>
+
+    <select id="selectGradePage" resultType="com.college.elective.entity.CourseGrade">
+        SELECT g.id, g.selection_id, g.student_id, g.course_id, g.semester_id,
+        g.usual_score, g.exam_score, g.total_score, g.grade_point, g.is_pass, g.status,
+        g.input_by, g.input_time, g.publish_time, g.remark, g.create_time, g.update_time,
+        su.real_name AS studentName,
+        st.stu_no AS stuNo,
+        st.class_name AS className,
+        c.course_code AS courseCode,
+        c.course_name AS courseName,
+        c.credit AS credit,
+        se.semester_name AS semesterName
+        FROM course_grade g
+        <include refid="gradeJoins"/>
+        WHERE g.deleted = 0
+        <if test="studentId != null">
+            AND g.student_id = #{studentId}
+        </if>
+        <if test="courseId != null">
+            AND g.course_id = #{courseId}
+        </if>
+        <if test="semesterId != null">
+            AND g.semester_id = #{semesterId}
+        </if>
+        <if test="status != null">
+            AND g.status = #{status}
+        </if>
+        ORDER BY st.stu_no ASC, g.id ASC
+    </select>
+
+    <select id="selectStudentGrades" resultType="com.college.elective.entity.CourseGrade">
+        SELECT g.id, g.selection_id, g.student_id, g.course_id, g.semester_id,
+        g.usual_score, g.exam_score, g.total_score, g.grade_point, g.is_pass, g.status,
+        g.remark, g.create_time, g.update_time,
+        c.course_code AS courseCode,
+        c.course_name AS courseName,
+        c.credit AS credit,
+        se.semester_name AS semesterName
+        FROM course_grade g
+        INNER JOIN course c ON c.id = g.course_id AND c.deleted = 0
+        LEFT JOIN semester se ON se.id = g.semester_id AND se.deleted = 0
+        WHERE g.deleted = 0
+        AND g.student_id = #{studentId}
+        <if test="semesterId != null">
+            AND g.semester_id = #{semesterId}
+        </if>
+        <if test="publishedOnly">
+            AND g.status = 1
+        </if>
+        ORDER BY g.semester_id DESC, c.course_code ASC
+    </select>
+
+    <select id="selectScoreDistribution" resultType="com.college.elective.vo.StatisticsVO$ChartItemVO">
+        SELECT t.name AS name, COUNT(g.id) AS value
+        FROM (SELECT '90-100' AS name, 90 AS min_score, 100 AS max_score
+              UNION ALL
+              SELECT '80-89', 80, 89
+              UNION ALL
+              SELECT '70-79', 70, 79
+              UNION ALL
+              SELECT '60-69', 60, 69
+              UNION ALL
+              SELECT '60以下', 0, 59) t
+                 LEFT JOIN course_grade g
+                           ON g.total_score BETWEEN t.min_score AND t.max_score
+                               AND g.deleted = 0
+                               AND g.total_score IS NOT NULL
+                               <if test="courseId != null">AND g.course_id = #{courseId}</if>
+                               <if test="semesterId != null">AND g.semester_id = #{semesterId}</if>
+        GROUP BY t.name, t.min_score
+        ORDER BY t.min_score DESC
+    </select>
+
+</mapper>
