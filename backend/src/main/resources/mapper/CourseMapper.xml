@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.college.elective.mapper.CourseMapper">
+
+    <sql id="courseColumns">
+        c.id, c.course_code, c.course_name, c.semester_id, c.dept_id, c.teacher_id,
+        c.credit, c.hours, c.course_type, c.exam_type, c.max_capacity, c.selected_count,
+        c.textbook, c.introduce, c.selectable, c.status, c.version,
+        c.create_time, c.update_time
+    </sql>
+
+    <sql id="courseJoins">
+        LEFT JOIN teacher t ON t.id = c.teacher_id AND t.deleted = 0
+        LEFT JOIN sys_user tu ON tu.id = t.user_id AND tu.deleted = 0
+        LEFT JOIN department d ON d.id = c.dept_id AND d.deleted = 0
+        LEFT JOIN semester s ON s.id = c.semester_id AND s.deleted = 0
+    </sql>
+
+    <select id="selectCoursePage" resultType="com.college.elective.entity.Course">
+        SELECT
+        <include refid="courseColumns"/>,
+        tu.real_name AS teacherName,
+        d.dept_name AS deptName,
+        s.semester_name AS semesterName
+        FROM course c
+        <include refid="courseJoins"/>
+        WHERE c.deleted = 0
+        <if test="query.courseName != null and query.courseName != ''">
+            AND c.course_name LIKE CONCAT('%', #{query.courseName}, '%')
+        </if>
+        <if test="query.courseCode != null and query.courseCode != ''">
+            AND c.course_code LIKE CONCAT('%', #{query.courseCode}, '%')
+        </if>
+        <if test="query.semesterId != null">
+            AND c.semester_id = #{query.semesterId}
+        </if>
+        <if test="query.deptId != null">
+            AND c.dept_id = #{query.deptId}
+        </if>
+        <if test="query.teacherId != null">
+            AND c.teacher_id = #{query.teacherId}
+        </if>
+        <if test="query.courseType != null and query.courseType != ''">
+            AND c.course_type = #{query.courseType}
+        </if>
+        <if test="query.status != null">
+            AND c.status = #{query.status}
+        </if>
+        <if test="query.onlyAvailable != null and query.onlyAvailable">
+            AND c.selected_count &lt; c.max_capacity
+        </if>
+        ORDER BY c.semester_id DESC, c.id DESC
+    </select>
+
+    <select id="selectCourseDetail" resultType="com.college.elective.entity.Course">
+        SELECT
+        <include refid="courseColumns"/>,
+        tu.real_name AS teacherName,
+        d.dept_name AS deptName,
+        s.semester_name AS semesterName
+        FROM course c
+        <include refid="courseJoins"/>
+        WHERE c.deleted = 0 AND c.id = #{id}
+    </select>
+
+    <update id="increaseSelectedCount">
+        UPDATE course
+        SET selected_count = selected_count + 1,
+            update_time    = NOW()
+        WHERE id = #{courseId}
+          AND deleted = 0
+          AND selected_count &lt; max_capacity
+    </update>
+
+    <update id="decreaseSelectedCount">
+        UPDATE course
+        SET selected_count = selected_count - 1,
+            update_time    = NOW()
+        WHERE id = #{courseId}
+          AND deleted = 0
+          AND selected_count &gt; 0
+    </update>
+
+    <update id="syncSelectedCount">
+        UPDATE course c
+        SET c.selected_count = (SELECT COUNT(*)
+                                FROM course_selection cs
+                                WHERE cs.course_id = c.id
+                                  AND cs.status = 1
+                                  AND cs.deleted = 0),
+            c.update_time    = NOW()
+        WHERE c.id = #{courseId}
+          AND c.deleted = 0
+    </update>
+
+    <select id="selectHotCourses" resultType="com.college.elective.vo.StatisticsVO$CourseRankVO">
+        SELECT c.id                                                                      AS courseId,
+               c.course_name                                                             AS courseName,
+               tu.real_name                                                              AS teacherName,
+               c.max_capacity                                                            AS maxCapacity,
+               c.selected_count                                                          AS selectedCount,
+               ROUND(c.selected_count * 100.0 / NULLIF(c.max_capacity, 0), 1)            AS rate
+        FROM course c
+                 LEFT JOIN teacher t ON t.id = c.teacher_id AND t.deleted = 0
+                 LEFT JOIN sys_user tu ON tu.id = t.user_id AND tu.deleted = 0
+        WHERE c.deleted = 0
+        <if test="semesterId != null">
+            AND c.semester_id = #{semesterId}
+        </if>
+        ORDER BY c.selected_count DESC, c.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectDeptDistribution" resultType="com.college.elective.vo.StatisticsVO$ChartItemVO">
+        SELECT d.dept_name                AS name,
+               COUNT(DISTINCT c.id)       AS value
+        FROM department d
+                 LEFT JOIN course c ON c.dept_id = d.id AND c.deleted = 0
+            <if test="semesterId != null">
+                AND c.semester_id = #{semesterId}
+            </if>
+        WHERE d.deleted = 0
+        GROUP BY d.id, d.dept_name
+        ORDER BY value DESC
+    </select>
+
+</mapper>
