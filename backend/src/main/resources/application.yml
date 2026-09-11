@@ -1,0 +1,97 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+    encoding:
+      charset: UTF-8
+      force: true
+  tomcat:
+    threads:
+      max: 500
+      min-spare: 50
+    max-connections: 10000
+    accept-count: 1000
+
+spring:
+  application:
+    name: college-elective-system
+  profiles:
+    active: dev
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+  mvc:
+    throw-exception-if-no-handler-found: true
+  web:
+    resources:
+      add-mappings: false
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 50MB
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.college.elective.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: false
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# 业务自定义配置
+elective:
+  jwt:
+    # 生产环境请通过环境变量 JWT_SECRET 覆盖
+    secret: ${JWT_SECRET:CollegeElectiveSystemSecretKeyForJwtTokenMustBeLongEnough2026}
+    # token 有效期（秒），默认 7200 = 2 小时
+    expire-seconds: 7200
+    # token 续期阈值（秒），剩余时间小于该值时自动续期
+    refresh-threshold-seconds: 600
+    header: Authorization
+    prefix: "Bearer "
+  selection:
+    # 单个学生可选的学分上限（用于选课校验）
+    max-credit: 30
+    # 单次选课请求的分布式锁等待时间（毫秒）
+    lock-wait-millis: 300
+    # 是否开启选课开关（管理员可动态关闭）
+    enabled: true
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+      - http://localhost:80
+      - http://localhost
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+  default-flat-param-object: true
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+    swagger-model-name: 实体类列表
+  production: false
+
+logging:
+  level:
+    root: info
+    com.college.elective: debug
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

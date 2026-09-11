@@ -1,0 +1,40 @@
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/college_elective?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:123456}
+    hikari:
+      pool-name: ElectiveHikariPool
+      minimum-idle: 20
+      maximum-pool-size: 100
+      idle-timeout: 300000
+      max-lifetime: 1800000
+      connection-timeout: 30000
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      database: 0
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 500
+          max-idle: 100
+          min-idle: 20
+          max-wait: 3000ms
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+knife4j:
+  production: true
+
+logging:
+  level:
+    root: warn
+    com.college.elective: info
+  file:
+    name: /app/logs/college-elective-system.log
