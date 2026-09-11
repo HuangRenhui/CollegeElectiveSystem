@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.college.elective.mapper.CourseSelectionMapper">
+
+    <select id="selectStudentSelections" resultType="com.college.elective.entity.CourseSelection">
+        SELECT sel.id,
+        sel.student_id,
+        sel.course_id,
+        sel.semester_id,
+        sel.select_time,
+        sel.drop_time,
+        sel.status,
+        sel.score,
+        sel.select_type,
+        sel.create_time,
+        sel.update_time,
+        c.course_code AS courseCode,
+        c.course_name AS courseName,
+        c.credit AS credit,
+        c.course_type AS courseType,
+        tu.real_name AS teacherName
+        FROM course_selection sel
+        INNER JOIN course c ON c.id = sel.course_id AND c.deleted = 0
+        LEFT JOIN teacher t ON t.id = c.teacher_id AND t.deleted = 0
+        LEFT JOIN sys_user tu ON tu.id = t.user_id AND tu.deleted = 0
+        WHERE sel.deleted = 0
+        AND sel.student_id = #{studentId}
+        <if test="semesterId != null">
+            AND sel.semester_id = #{semesterId}
+        </if>
+        <if test="status != null">
+            AND sel.status = #{status}
+        </if>
+        ORDER BY sel.select_time DESC
+    </select>
+
+    <select id="selectCourseStudents" resultType="com.college.elective.entity.CourseSelection">
+        SELECT sel.id,
+        sel.student_id,
+        sel.course_id,
+        sel.semester_id,
+        sel.select_time,
+        sel.status,
+        sel.score,
+        c.course_code AS courseCode,
+        c.course_name AS courseName,
+        c.credit AS credit,
+        su.real_name AS studentName,
+        st.stu_no AS stuNo,
+        st.class_name AS className
+        FROM course_selection sel
+        INNER JOIN course c ON c.id = sel.course_id AND c.deleted = 0
+        INNER JOIN student st ON st.id = sel.student_id AND st.deleted = 0
+        INNER JOIN sys_user su ON su.id = st.user_id AND su.deleted = 0
+        WHERE sel.deleted = 0
+        AND sel.course_id = #{courseId}
+        <if test="keyword != null and keyword != ''">
+            AND (su.real_name LIKE CONCAT('%', #{keyword}, '%') OR st.stu_no LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY st.stu_no ASC
+    </select>
+
+    <select id="selectSelectedCourseIds" resultType="java.lang.Long">
+        SELECT sel.course_id
+        FROM course_selection sel
+        WHERE sel.deleted = 0
+        AND sel.student_id = #{studentId}
+        AND sel.semester_id = #{semesterId}
+        AND sel.status = 1
+    </select>
+
+    <select id="sumSelectedCredit" resultType="java.math.BigDecimal">
+        SELECT IFNULL(SUM(c.credit), 0)
+        FROM course_selection sel
+                 INNER JOIN course c ON c.id = sel.course_id AND c.deleted = 0
+        WHERE sel.deleted = 0
+          AND sel.status = 1
+          AND sel.student_id = #{studentId}
+        <if test="semesterId != null">
+            AND sel.semester_id = #{semesterId}
+        </if>
+    </select>
+
+    <select id="countBySemester" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM course_selection
+        WHERE deleted = 0
+          AND status = 1
+          AND semester_id = #{semesterId}
+    </select>
+
+</mapper>
