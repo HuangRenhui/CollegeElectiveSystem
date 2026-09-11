@@ -1,0 +1,19 @@
+// 主题变量（被 vite.config.js 自动注入到所有 scss 文件）
+$primary-color: #409eff;
+$success-color: #67c23a;
+$warning-color: #e6a23c;
+$danger-color: #f56c6c;
+$info-color: #909399;
+
+$sidebar-width: 220px;
+$sidebar-collapsed-width: 64px;
+$header-height: 56px;
+$tags-height: 36px;
+
+$sidebar-bg: #1f2d3d;
+$sidebar-bg-hover: #172432;
+$sidebar-text: #bfcbd9;
+$sidebar-text-active: #ffffff;
+
+$page-bg: #f0f2f5;
+$card-radius: 8px;

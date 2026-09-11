@@ -1,0 +1,158 @@
+// 全局样式
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', Arial, sans-serif;
+  font-size: 14px;
+  color: #303133;
+  background-color: $page-bg;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: $primary-color;
+  text-decoration: none;
+}
+
+// ---------------------------- 通用布局 ----------------------------
+.page-container {
+  padding: 16px;
+}
+
+.page-card {
+  background: #fff;
+  border-radius: $card-radius;
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.06);
+}
+
+.search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: #fff;
+  border-radius: $card-radius;
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.06);
+}
+
+.table-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.pagination-wrapper {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 0 4px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+}
+
+.text-muted {
+  color: #909399;
+}
+
+.text-danger {
+  color: $danger-color;
+}
+
+.text-success {
+  color: $success-color;
+}
+
+// ---------------------------- 路由过渡动画 ----------------------------
+.fade-transform-enter-active,
+.fade-transform-leave-active {
+  transition: all 0.25s;
+}
+
+.fade-transform-enter-from {
+  opacity: 0;
+  transform: translateX(-16px);
+}
+
+.fade-transform-leave-to {
+  opacity: 0;
+  transform: translateX(16px);
+}
+
+// ---------------------------- NProgress ----------------------------
+#nprogress .bar {
+  background: $primary-color !important;
+  height: 3px !important;
+}
+
+// ---------------------------- 课表样式 ----------------------------
+.timetable-grid {
+  display: grid;
+  grid-template-columns: 60px repeat(7, 1fr);
+  border: 1px solid #ebeef5;
+  border-radius: $card-radius;
+  overflow: hidden;
+  background: #fff;
+
+  &__cell {
+    min-height: 64px;
+    border-right: 1px solid #ebeef5;
+    border-bottom: 1px solid #ebeef5;
+    padding: 4px;
+    font-size: 13px;
+  }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    background: #fafafa;
+    color: #606266;
+    min-height: 42px;
+  }
+
+  &__section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fafafa;
+    color: #909399;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  &__course {
+    height: 100%;
+    padding: 6px;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: transform 0.15s;
+
+    &:hover {
+      transform: scale(1.02);
+    }
+
+    strong {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 2px;
+    }
+  }
+}
