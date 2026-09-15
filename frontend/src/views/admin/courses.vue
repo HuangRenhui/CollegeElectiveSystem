@@ -23,8 +23,8 @@
       <div class="table-toolbar">
         <div>
           <el-button type="primary" :icon="Plus" @click="openForm()">新增课程</el-button>
-          <el-button :icon="Refresh" @click="doPreload">预热选课缓存</el-button>
-          <el-button @click="doSync">同步选课人数</el-button>
+          <el-button :icon="Refresh" @click="openPreload">预热选课缓存</el-button>
+          <el-button @click="openSync">同步选课人数</el-button>
         </div>
         <span class="text-muted">共 {{ total }} 门课程</span>
       </div>
@@ -264,6 +264,50 @@
         <el-descriptions-item label="课程简介" :span="2">{{ detail.introduce || '暂无' }}</el-descriptions-item>
       </el-descriptions>
     </el-dialog>
+
+    <!-- 缓存预热弹窗 -->
+    <el-dialog v-model="preloadVisible" title="预热选课缓存" width="520px" :close-on-click-modal="false">
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="预热说明"
+        description="将所选学期课程的余量与已选学生名单写入缓存，用于提升选课期间的响应速度。建议在每日开放选课前执行一次。"
+      />
+
+      <el-form label-width="90px" class="mt-16">
+        <el-form-item label="目标学期">
+          <el-select v-model="preloadSemesterId" placeholder="请选择学期" clearable style="width: 100%">
+            <el-option v-for="s in semesters" :key="s.id" :label="s.semesterName" :value="s.id" />
+          </el-select>
+          <div class="form-tip">
+            默认使用列表当前筛选的学期；如未筛选则使用当前学期（{{ appStore.currentSemester?.semesterName || '未设置' }}）。
+          </div>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="preloadVisible = false">取消</el-button>
+        <el-button type="primary" :loading="preloading" @click="doPreload">开始预热</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 同步选课人数弹窗 -->
+    <el-dialog v-model="syncVisible" title="同步选课人数" width="520px" :close-on-click-modal="false">
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="同步说明"
+        description="将按选课记录重新统计各课程的已选人数，并覆盖缓存的余量数据。当页面显示的余量与实际人数不一致时使用。"
+      />
+      <p class="text-muted mt-16">同步过程可能耗时较长，请勿重复提交。</p>
+
+      <template #footer>
+        <el-button @click="syncVisible = false">取消</el-button>
+        <el-button type="primary" :loading="syncing" @click="doSync">确定同步</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -290,6 +334,11 @@ const loading = ref(false)
 const submitting = ref(false)
 const formVisible = ref(false)
 const detailVisible = ref(false)
+const preloading = ref(false)
+const syncing = ref(false)
+const preloadVisible = ref(false)
+const syncVisible = ref(false)
+const preloadSemesterId = ref(null)
 
 const list = ref([])
 const total = ref(0)
@@ -524,14 +573,41 @@ function handleCommand(command, row) {
   }
 }
 
+function openPreload() {
+  preloadSemesterId.value = query.semesterId || appStore.currentSemester?.id || null
+  preloadVisible.value = true
+}
+
 async function doPreload() {
-  await preloadCourseCache(query.semesterId || appStore.currentSemester?.id)
-  ElMessage.success('选课缓存预热完成')
+  preloading.value = true
+  try {
+    await preloadCourseCache(preloadSemesterId.value || appStore.currentSemester?.id)
+    preloadVisible.value = false
+    ElMessage.success('选课缓存预热完成')
+    await loadData()
+  } catch {
+    // 未实现或执行失败已由拦截器提示，保留弹窗便于调整后重试
+  } finally {
+    preloading.value = false
+  }
+}
+
+function openSync() {
+  syncVisible.value = true
 }
 
 async function doSync() {
-  await syncSelectionCount()
-  ElMessage.success('选课人数同步完成')
+  syncing.value = true
+  try {
+    await syncSelectionCount()
+    syncVisible.value = false
+    ElMessage.success('选课人数同步完成')
+    await loadData()
+  } catch {
+    // 未实现或执行失败已由拦截器提示
+  } finally {
+    syncing.value = false
+  }
 }
 </script>
 
@@ -540,5 +616,11 @@ async function doSync() {
   span {
     font-size: 12.5px;
   }
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.6;
 }
 </style>

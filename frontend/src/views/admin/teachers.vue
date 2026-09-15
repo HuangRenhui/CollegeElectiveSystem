@@ -14,8 +14,11 @@
 
     <el-card shadow="never">
       <div class="table-toolbar">
-        <el-button type="primary" :icon="Plus" @click="openForm()">新增教师</el-button>
-        <span class="text-muted">共 {{ total }} 名教师（初始密码 123456）</span>
+        <div>
+          <el-button type="primary" :icon="Plus" @click="openForm()">新增教师</el-button>
+          <span class="text-muted" style="margin-left: 12px">新建账号的初始密码为 123456</span>
+        </div>
+        <span class="text-muted">共 {{ total }} 名教师</span>
       </div>
 
       <el-table v-loading="loading" :data="list" stripe>
@@ -36,9 +39,10 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="190" fixed="right">
+        <el-table-column label="操作" width="270" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openForm(row)">编辑</el-button>
+            <el-button link type="warning" @click="handleResetPassword(row)">重置密码</el-button>
             <el-button link :type="row.status === 1 ? 'warning' : 'success'" @click="toggleStatus(row)">
               {{ row.status === 1 ? '禁用' : '启用' }}
             </el-button>
@@ -118,6 +122,48 @@
         <el-button type="primary" :loading="submitting" @click="submitForm">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 重置密码 -->
+    <el-dialog v-model="pwdVisible" title="重置登录密码" width="520px" :close-on-click-modal="false">
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="重置说明"
+        description="重置后该教师当前登录状态会立即失效，需使用新密码重新登录。请通过安全渠道将新密码告知教师本人。"
+      />
+
+      <el-form label-width="90px" class="mt-16">
+        <el-form-item label="教师">
+          <span>{{ pwdTarget.realName }}（工号：{{ pwdTarget.teacherNo }}）</span>
+        </el-form-item>
+        <el-form-item label="重置方式">
+          <el-radio-group v-model="pwdMode">
+            <el-radio value="default">重置为初始密码</el-radio>
+            <el-radio value="custom">自定义新密码</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="pwdMode === 'default'" label="初始密码">
+          <el-tag type="info" size="large">{{ DEFAULT_PASSWORD }}</el-tag>
+          <div class="form-tip">与新建账号时下发的初始密码一致。</div>
+        </el-form-item>
+        <el-form-item v-else label="新密码">
+          <el-input
+            v-model="pwdForm.newPassword"
+            type="password"
+            show-password
+            placeholder="请输入 6-20 位新密码"
+            maxlength="20"
+          />
+          <div class="form-tip">长度 6-20 位，建议包含字母与数字组合。</div>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="pwdVisible = false">取消</el-button>
+        <el-button type="primary" :loading="resetting" @click="submitResetPassword">确定重置</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -126,15 +172,25 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import {
-  pageTeachers, createTeacher, updateTeacher, deleteTeacher, updateTeacherStatus, listDepartments
+  pageTeachers, createTeacher, updateTeacher, deleteTeacher, updateTeacherStatus, listDepartments,
+  resetUserPassword
 } from '@/api/admin'
 import { genderText, userStatusText, userStatusTag, GENDER_OPTIONS, TITLE_OPTIONS } from '@/utils/dict'
 
 defineOptions({ name: 'AdminTeachers' })
 
+/** 新建账号与重置时使用的初始密码 */
+const DEFAULT_PASSWORD = '123456'
+
 const loading = ref(false)
 const submitting = ref(false)
+const resetting = ref(false)
 const formVisible = ref(false)
+
+const pwdVisible = ref(false)
+const pwdMode = ref('default')
+const pwdTarget = reactive({})
+const pwdForm = reactive({ newPassword: '' })
 
 const list = ref([])
 const total = ref(0)
@@ -251,6 +307,41 @@ async function toggleStatus(row) {
   loadData()
 }
 
+function handleResetPassword(row) {
+  if (!row.userId) {
+    ElMessage.warning('该教师未关联登录账号，无法重置密码')
+    return
+  }
+  Object.assign(pwdTarget, row)
+  pwdMode.value = 'default'
+  pwdForm.newPassword = ''
+  pwdVisible.value = true
+}
+
+async function submitResetPassword() {
+  const newPassword = pwdMode.value === 'default' ? DEFAULT_PASSWORD : pwdForm.newPassword.trim()
+
+  if (newPassword.length < 6 || newPassword.length > 20) {
+    ElMessage.warning('密码长度需为 6-20 位')
+    return
+  }
+
+  resetting.value = true
+  try {
+    await resetUserPassword(pwdTarget.userId, newPassword)
+    pwdVisible.value = false
+    ElMessage.success(
+      pwdMode.value === 'default'
+        ? `已重置为初始密码 ${DEFAULT_PASSWORD}，请告知教师及时修改`
+        : '密码重置成功，请告知教师及时修改'
+    )
+  } catch {
+    // 错误已由请求拦截器提示
+  } finally {
+    resetting.value = false
+  }
+}
+
 function handleDelete(row) {
   ElMessageBox.confirm(`确定要删除教师「${row.realName}」吗？`, '删除确认', { type: 'warning' })
     .then(async () => {
@@ -261,3 +352,11 @@ function handleDelete(row) {
     .catch(() => {})
 }
 </script>
+
+<style lang="scss" scoped>
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.6;
+}
+</style>
