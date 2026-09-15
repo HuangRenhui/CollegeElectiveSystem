@@ -36,7 +36,7 @@ if not exist "node_modules" (
 )
 
 echo.
-echo [2/2] 启动前端开发服务器（默认 http://localhost:5173）...
+echo [2/2] 启动前端开发服务器（默认 http://localhost:5174）...
 echo       按 Ctrl + C 可停止服务
 echo.
 

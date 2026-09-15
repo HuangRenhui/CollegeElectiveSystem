@@ -254,7 +254,7 @@ npm install
 npm run dev
 ```
 
-前端默认运行在 http://localhost:5173 ，已配置 `/api` 代理到 `http://localhost:8080`。
+前端默认运行在 http://localhost:5174 ，已配置 `/api` 代理到 `http://localhost:8080`。
 
 #### 5. 打包部署
 

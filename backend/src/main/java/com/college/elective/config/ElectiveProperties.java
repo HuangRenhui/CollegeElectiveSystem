@@ -45,6 +45,6 @@ public class ElectiveProperties {
 
     @Data
     public static class Cors {
-        private List<String> allowedOrigins = new ArrayList<>(List.of("http://localhost:5173"));
+        private List<String> allowedOrigins = new ArrayList<>(List.of("http://localhost:5174"));
     }
 }
