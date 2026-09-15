@@ -22,6 +22,28 @@
       </el-tag>
     </div>
 
+    <!-- 选课窗口状态与倒计时 -->
+    <el-alert
+      v-if="phase !== 'unset'"
+      class="selection-banner"
+      :type="isOpen ? 'success' : phase === 'before' ? 'warning' : 'info'"
+      :closable="false"
+      show-icon
+    >
+      <template #title>
+        <div class="selection-banner__title">
+          <span>{{ phaseText }}</span>
+          <el-tag v-if="phase !== 'open'" :type="phaseTagType" size="small" effect="dark">
+            {{ countdownText }}
+          </el-tag>
+        </div>
+      </template>
+      <div class="selection-banner__tip">{{ tipText }}</div>
+      <div v-if="semesterStartText" class="selection-banner__range">
+        选课时段：{{ semesterStartText }} ~ {{ semesterEndText }}
+      </div>
+    </el-alert>
+
     <!-- 课程列表 -->
     <el-card shadow="never">
       <template #header>
@@ -29,7 +51,7 @@
           <span>可选课程（共 {{ total }} 门）</span>
           <el-button link type="primary" :icon="Refresh" @click="loadData">刷新</el-button>
         </div>
-      </el-card>
+      </template>
 
       <el-row v-loading="loading" :gutter="16">
         <el-col v-for="course in list" :key="course.id" :xs="24" :sm="12" :lg="8" :xl="6" style="margin-bottom: 16px">
@@ -79,11 +101,11 @@
                   v-if="!course.selected"
                   type="primary"
                   size="small"
-                  :disabled="isFull(course) || !isSelectable(course)"
+                  :disabled="isFull(course) || !isSelectable(course) || !canSelect"
                   :loading="loadingId === course.id"
                   @click="handleSelect(course)"
                 >
-                  {{ isFull(course) ? '已满' : '选课' }}
+                  {{ selectButtonText(course) }}
                 </el-button>
                 <el-tag v-else type="success" effect="plain" size="large">已选</el-tag>
               </div>
@@ -140,16 +162,21 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import { listCourses, getCourseDetail, selectCourse } from '@/api/student'
+import { listCourses, getCourseDetail, selectCourse, checkConflict } from '@/api/student'
 import { listDepartments } from '@/api/admin'
+import { getCurrentSemester } from '@/api/common'
+import { useAppStore } from '@/store/modules/app'
+import { useSelectionCountdown } from '@/utils/useSelectionCountdown'
 import {
   COURSE_TYPE_OPTIONS, courseTypeText, courseTypeTag, examTypeText, weekTypeText
 } from '@/utils/dict'
 
 defineOptions({ name: 'StudentCourses' })
+
+const appStore = useAppStore()
 
 const loading = ref(false)
 const loadingId = ref(null)
@@ -158,6 +185,24 @@ const total = ref(0)
 const departments = ref([])
 const creditLimit = ref(0)
 const selectedCredit = ref(0)
+
+/** 当前学期（优先取全局缓存，缺失时回退到接口） */
+const semester = ref(appStore.currentSemester)
+
+const {
+  phase,
+  canSelect,
+  countdownText,
+  tipText,
+  phaseText,
+  phaseTagType,
+  isOpen,
+  startTime,
+  endTime
+} = useSelectionCountdown(semester)
+
+const semesterStartText = computed(() => formatMoment(startTime.value))
+const semesterEndText = computed(() => formatMoment(endTime.value))
 
 const query = reactive({
   pageNum: 1,
@@ -173,8 +218,30 @@ const detailVisible = ref(false)
 const detail = reactive({})
 
 onMounted(async () => {
-  await Promise.all([loadData(), loadDepartments()])
+  await Promise.all([loadData(), loadDepartments(), loadSemester()])
 })
+
+async function loadSemester() {
+  // 全局 store 通常已由布局加载，此处仅在缺失时补充请求
+  if (semester.value?.selectStartTime !== undefined) return
+  try {
+    const { data } = await getCurrentSemester()
+    if (data) {
+      semester.value = data
+      appStore.setCurrentSemester(data)
+    }
+  } catch {
+    // 未设置当前学期时保持为空，由倒计时状态统一提示
+  }
+}
+
+/** 时间戳格式化为 "YYYY-MM-DD HH:mm" */
+function formatMoment(timestamp) {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
 
 async function loadData() {
   loading.value = true
@@ -243,12 +310,58 @@ async function openDetail(course) {
   detailVisible.value = true
 }
 
+/** 选课按钮文案：满员优先，其次反映选课窗口状态 */
+function selectButtonText(course) {
+  if (isFull(course)) return '已满'
+  if (!isSelectable(course)) return '不可选'
+  if (phase.value === 'before') return '未开始'
+  if (phase.value === 'closed') return '已结束'
+  if (phase.value === 'unset') return '未开放'
+  return '选课'
+}
+
 async function handleSelect(course) {
-  await ElMessageBox.confirm(
-    `确定要选修《${course.courseName}》吗？该课程 ${course.credit} 学分。`,
-    '选课确认',
-    { type: 'info', confirmButtonText: '确定选课', cancelButtonText: '再想想' }
-  )
+  // 双保险：按钮已禁用，但仍防御极端情况下的误触发
+  if (!canSelect.value) {
+    ElMessage.warning(tipText.value)
+    return
+  }
+
+  loadingId.value = course.id
+  let conflicts = []
+  try {
+    // 先做时间冲突预检，冲突时引导确认而非直接提交
+    const { data } = await checkConflict(course.id)
+    conflicts = data || []
+  } catch {
+    // 预检接口不可用时仍允许继续选课，由后端在提交阶段校验
+    conflicts = []
+  } finally {
+    loadingId.value = null
+  }
+
+  if (conflicts.length) {
+    try {
+      await ElMessageBox.confirm(buildConflictHtml(course, conflicts), '上课时间冲突', {
+        type: 'warning',
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: '仍然选课',
+        cancelButtonText: '放弃选课'
+      })
+    } catch {
+      return
+    }
+  } else {
+    try {
+      await ElMessageBox.confirm(
+        `确定要选修《${course.courseName}》吗？该课程 ${course.credit} 学分。`,
+        '选课确认',
+        { type: 'info', confirmButtonText: '确定选课', cancelButtonText: '再想想' }
+      )
+    } catch {
+      return
+    }
+  }
 
   loadingId.value = course.id
   try {
@@ -262,11 +375,43 @@ async function handleSelect(course) {
     loadingId.value = null
   }
 }
+
+/**
+ * 将冲突课程渲染为确认弹窗中的 HTML 列表。
+ */
+function buildConflictHtml(course, conflicts) {
+  const lines = conflicts
+    .map((item) => `《${item.courseName || item.conflictCourseName || '已选课程'}》${item.scheduleText || ''}`)
+    .join('<br/>')
+  return `<p>《${course.courseName}》与以下已选课程上课时间重叠：</p>
+    <p style="color:#f56c6c;line-height:1.9">${lines}</p>
+    <p style="color:#909399;font-size:12px">继续选课可能导致无法正常上课，请确认后再操作。</p>`
+}
 </script>
 
 <style lang="scss" scoped>
 .search-bar__spacer {
   flex: 1;
+}
+
+.selection-banner {
+  margin-bottom: 16px;
+
+  &__title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  &__tip {
+    margin-top: 2px;
+  }
+
+  &__range {
+    margin-top: 4px;
+    font-size: 12px;
+    opacity: 0.85;
+  }
 }
 
 .course-card {

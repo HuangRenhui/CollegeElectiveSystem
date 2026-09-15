@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 
-/** 分页查询可选课程（含 Redis 实时余量与学生选课状态） */
+/** 分页查询可选课程（含实时余量与学生选课状态） */
 export function listCourses(params) {
   return request({ url: '/student/courses', method: 'get', params })
 }
@@ -10,7 +10,7 @@ export function getCourseDetail(id) {
   return request({ url: `/student/courses/${id}`, method: 'get' })
 }
 
-/** 选课（Redis Lua 原子预占：查重、余量校验、时间冲突检测） */
+/** 选课（含重复选课校验、余量校验与上课时间冲突检测） */
 export function selectCourse(courseId) {
   return request({ url: `/student/courses/${courseId}/select`, method: 'post' })
 }

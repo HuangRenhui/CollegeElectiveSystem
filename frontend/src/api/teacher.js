@@ -20,7 +20,7 @@ export function getGradeSheet(courseId) {
   return request({ url: `/teacher/courses/${courseId}/grade-sheet`, method: 'get' })
 }
 
-/** 批量录入成绩（总评 = 平时 × 30% + 期末 × 70%） */
+/** 批量录入成绩 */
 export function inputGrades(data) {
   return request({ url: '/teacher/grades/input', method: 'post', data })
 }
