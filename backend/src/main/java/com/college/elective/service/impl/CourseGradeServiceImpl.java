@@ -1,18 +1,29 @@
 package com.college.elective.service.impl;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.college.elective.common.BusinessException;
 import com.college.elective.common.PageResult;
 import com.college.elective.common.PendingImplementation;
+import com.college.elective.common.ResultCode;
 import com.college.elective.dto.GradeInputDTO;
+import com.college.elective.entity.Course;
 import com.college.elective.entity.CourseGrade;
 import com.college.elective.mapper.CourseGradeMapper;
+import com.college.elective.mapper.CourseMapper;
+import com.college.elective.security.LoginUser;
+import com.college.elective.security.SecurityUtils;
 import com.college.elective.service.CourseGradeService;
 import com.college.elective.vo.GradeReportVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 成绩服务实现。
@@ -43,8 +54,10 @@ import java.util.List;
 public class CourseGradeServiceImpl extends ServiceImpl<CourseGradeMapper, CourseGrade>
         implements CourseGradeService, PendingImplementation {
 
-    // TODO 待注入依赖（参考类注释中的「建议注入的依赖」列表）
-    //  private final CourseMapper courseMapper;
+    /** 课程 Mapper：查询课程详情、校验成绩操作权限 */
+    private final CourseMapper courseMapper;
+
+    // TODO 待注入依赖（实现成绩录入/发布/撤回/审核时启用）
     //  private final CourseSelectionMapper selectionMapper;
     //  private final SemesterMapper semesterMapper;
 
@@ -88,32 +101,123 @@ public class CourseGradeServiceImpl extends ServiceImpl<CourseGradeMapper, Cours
     @Override
     public PageResult<CourseGrade> pageGrades(Long pageNum, Long pageSize, Long studentId,
                                               Long courseId, Long semesterId, Integer status) {
-        // TODO 实现成绩分页查询
-        //  调用 baseMapper.selectGradePage(new Page<>(...), studentId, courseId, semesterId, status)
-        //  再通过 PageResult.of(page) 包装返回
-        throw new UnsupportedOperationException("TODO：成绩分页查询 尚未实现，请参考 docs/待实现功能.md");
+        IPage<CourseGrade> page = baseMapper.selectGradePage(
+                new Page<>(pageNum, pageSize), studentId, courseId, semesterId, status);
+        return PageResult.of(page);
     }
 
     @Override
     public GradeReportVO getStudentGradeReport(Long semesterId) {
-        // TODO 实现学生成绩单与绩点统计
-        //  1. 通过 SecurityUtils.requireStudentId() 获取当前学生ID
-        //  2. 调用 baseMapper.selectStudentGrades(studentId, semesterId, true) 仅查已发布成绩
-        //  3. 逐条组装 GradeReportVO.CourseGrade（含是否及格标记）
-        //  4. 统计项：
-        //     - totalCredit       所有课程学分求和
-        //     - earnedCredit      仅及格课程的学分求和
-        //     - averageScore      有总评成绩课程的算术平均（保留 2 位小数）
-        //     - averageGradePoint Σ(绩点 × 学分) / Σ(学分)（保留 2 位小数）
-        throw new UnsupportedOperationException("TODO：我的成绩单 尚未实现，请参考 docs/待实现功能.md");
+        Long studentId = SecurityUtils.requireStudentId();
+
+        // 仅统计已发布的成绩
+        List<CourseGrade> grades = baseMapper.selectStudentGrades(studentId, semesterId, true);
+
+        GradeReportVO vo = new GradeReportVO();
+        vo.setSemesterName(grades.isEmpty() ? null : grades.get(0).getSemesterName());
+        vo.setGrades(grades.stream().map(this::toReportItem).toList());
+
+        BigDecimal totalCredit = BigDecimal.ZERO;
+        BigDecimal earnedCredit = BigDecimal.ZERO;
+        BigDecimal scoreSum = BigDecimal.ZERO;
+        BigDecimal pointWeighted = BigDecimal.ZERO;
+        BigDecimal pointCredit = BigDecimal.ZERO;
+        int scoreCount = 0;
+
+        for (CourseGrade grade : grades) {
+            BigDecimal credit = grade.getCredit() == null ? BigDecimal.ZERO : grade.getCredit();
+            totalCredit = totalCredit.add(credit);
+
+            boolean pass = isPassed(grade);
+            if (pass) {
+                earnedCredit = earnedCredit.add(credit);
+            }
+
+            if (grade.getTotalScore() != null) {
+                scoreSum = scoreSum.add(grade.getTotalScore());
+                scoreCount++;
+            }
+
+            // 平均绩点按「绩点 × 学分」的加权方式计算，仅统计已修完且有成绩的课程
+            if (grade.getGradePoint() != null) {
+                pointWeighted = pointWeighted.add(grade.getGradePoint().multiply(credit));
+                pointCredit = pointCredit.add(credit);
+            }
+        }
+
+        vo.setTotalCredit(totalCredit.setScale(1, RoundingMode.HALF_UP));
+        vo.setEarnedCredit(earnedCredit.setScale(1, RoundingMode.HALF_UP));
+        vo.setAverageScore(scoreCount == 0
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : scoreSum.divide(BigDecimal.valueOf(scoreCount), 2, RoundingMode.HALF_UP));
+        vo.setAverageGradePoint(pointCredit.compareTo(BigDecimal.ZERO) == 0
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : pointWeighted.divide(pointCredit, 2, RoundingMode.HALF_UP));
+
+        return vo;
     }
 
     @Override
     public List<CourseGrade> listCourseGradeSheet(Long courseId) {
-        // TODO 实现成绩录入单查询
-        //  1. 查询课程并做教师权限校验
-        //  2. 调用 baseMapper.selectGradePage(...) 获取该课程全部学生的成绩状态
-        //  3. 若需包含未录入成绩的学生，可结合 CourseSelectionMapper 查询选课名单后合并
-        throw new UnsupportedOperationException("TODO：成绩录入单 尚未实现，请参考 docs/待实现功能.md");
+        Course course = courseMapper.selectCourseDetail(courseId);
+        BusinessException.throwIf(course == null, ResultCode.COURSE_NOT_FOUND);
+        checkGradeAccess(course);
+
+        // 取该课程下全部成绩记录（不分页），供成绩录入单展示
+        IPage<CourseGrade> page = baseMapper.selectGradePage(
+                new Page<>(1, MAX_GRADE_SHEET_SIZE), null, courseId, null, null);
+        return page.getRecords();
     }
+
+    /** 成绩录入单一次加载的最大条数 */
+    private static final long MAX_GRADE_SHEET_SIZE = 1000L;
+
+    /**
+     * 校验当前用户是否有权操作指定课程的成绩。
+     *
+     * <p>管理员不受限；教师仅能操作自己授课的课程。</p>
+     *
+     * @param course 课程实体
+     */
+    private void checkGradeAccess(Course course) {
+        LoginUser loginUser = SecurityUtils.getLoginUser();
+        if (loginUser.isAdmin()) {
+            return;
+        }
+        BusinessException.throwIf(!loginUser.isTeacher()
+                        || !Objects.equals(course.getTeacherId(), loginUser.getTeacherId()),
+                ResultCode.ROLE_NOT_ALLOWED, "无权操作该课程的成绩");
+    }
+
+    /**
+     * 将成绩实体转换为成绩单条目。
+     */
+    private GradeReportVO.CourseGrade toReportItem(CourseGrade grade) {
+        GradeReportVO.CourseGrade item = new GradeReportVO.CourseGrade();
+        item.setCourseCode(grade.getCourseCode());
+        item.setCourseName(grade.getCourseName());
+        item.setCredit(grade.getCredit());
+        item.setUsualScore(grade.getUsualScore());
+        item.setExamScore(grade.getExamScore());
+        item.setTotalScore(grade.getTotalScore());
+        item.setGradePoint(grade.getGradePoint());
+        item.setPass(isPassed(grade));
+        return item;
+    }
+
+    /**
+     * 判断成绩是否及格。
+     *
+     * <p>优先依据 {@code isPass} 字段，缺失时按总评成绩是否达到 60 分推断。</p>
+     */
+    private boolean isPassed(CourseGrade grade) {
+        if (grade.getIsPass() != null) {
+            return grade.getIsPass() == 1;
+        }
+        return grade.getTotalScore() != null
+                && grade.getTotalScore().compareTo(PASS_SCORE) >= 0;
+    }
+
+    /** 及格分数线 */
+    private static final BigDecimal PASS_SCORE = new BigDecimal("60");
 }
