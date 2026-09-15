@@ -1,12 +1,19 @@
 package com.college.elective.service.impl;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.college.elective.common.BusinessException;
 import com.college.elective.common.PageResult;
 import com.college.elective.common.PendingImplementation;
+import com.college.elective.common.ResultCode;
 import com.college.elective.dto.CourseQueryDTO;
 import com.college.elective.entity.Course;
 import com.college.elective.entity.CourseSelection;
+import com.college.elective.mapper.CourseMapper;
 import com.college.elective.mapper.CourseSelectionMapper;
+import com.college.elective.security.LoginUser;
+import com.college.elective.security.SecurityUtils;
 import com.college.elective.service.CourseSelectionService;
 import com.college.elective.vo.ConflictVO;
 import com.college.elective.vo.SelectionResultVO;
@@ -15,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 选课服务实现。
@@ -50,8 +58,10 @@ import java.util.List;
 public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMapper, CourseSelection>
         implements CourseSelectionService, PendingImplementation {
 
-    // TODO 待注入依赖（参考类注释中的「建议注入的依赖」列表）
-    //  private final CourseMapper courseMapper;
+    /** 课程 Mapper：查询课程详情、校验选课权限 */
+    private final CourseMapper courseMapper;
+
+    // TODO 待注入依赖（实现选课/退课/预热/同步时启用）
     //  private final StudentMapper studentMapper;
     //  private final SemesterMapper semesterMapper;
     //  private final CourseScheduleMapper scheduleMapper;
@@ -90,21 +100,39 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
     @Override
     public PageResult<CourseSelection> pageMySelections(Long pageNum, Long pageSize,
                                                         Long semesterId, Integer status) {
-        // TODO 实现我的选课记录查询
-        //  1. 通过 SecurityUtils.requireStudentId() 获取当前学生ID
-        //  2. 调用 baseMapper.selectStudentSelections(new Page<>(...), studentId, semesterId, status)
-        //  3. 通过 PageResult.of(page) 包装返回
-        throw new UnsupportedOperationException("TODO：我的选课记录 尚未实现，请参考 docs/待实现功能.md");
+        Long studentId = SecurityUtils.requireStudentId();
+        IPage<CourseSelection> page = baseMapper.selectStudentSelections(
+                new Page<>(pageNum, pageSize), studentId, semesterId, status);
+        return PageResult.of(page);
     }
 
     @Override
     public PageResult<CourseSelection> pageCourseStudents(Long courseId, Long pageNum,
                                                           Long pageSize, String keyword) {
-        // TODO 实现课程学生名单查询
-        //  1. 调用 baseMapper.selectCourseStudents(new Page<>(...), courseId, keyword)
-        //  2. 校验当前教师是否有权查看该课程（教师仅能看自己的课程，管理员不受限）
-        //  3. 通过 PageResult.of(page) 包装返回
-        throw new UnsupportedOperationException("TODO：课程学生名单 尚未实现，请参考 docs/待实现功能.md");
+        checkCourseAccess(courseId);
+        IPage<CourseSelection> page = baseMapper.selectCourseStudents(
+                new Page<>(pageNum, pageSize), courseId, keyword);
+        return PageResult.of(page);
+    }
+
+    /**
+     * 校验当前用户是否有权访问指定课程的名单。
+     *
+     * <p>管理员不受限；教师仅能访问自己授课的课程。</p>
+     *
+     * @param courseId 课程ID
+     */
+    private void checkCourseAccess(Long courseId) {
+        Course course = courseMapper.selectCourseDetail(courseId);
+        BusinessException.throwIf(course == null, ResultCode.COURSE_NOT_FOUND);
+
+        LoginUser loginUser = SecurityUtils.getLoginUser();
+        if (loginUser.isAdmin()) {
+            return;
+        }
+        BusinessException.throwIf(!loginUser.isTeacher()
+                        || !Objects.equals(course.getTeacherId(), loginUser.getTeacherId()),
+                ResultCode.ROLE_NOT_ALLOWED, "无权查看该课程的学生名单");
     }
 
     @Override
