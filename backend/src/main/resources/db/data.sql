@@ -1,10 +1,25 @@
 -- =====================================================================
--- 高校选修课管理系统 - 初始化数据
--- 说明：密码统一为 123456，格式 {noop}123456 由 Spring Security
---       DelegatingPasswordEncoder 解析；新注册用户自动使用 bcrypt。
+-- 高校选修课管理系统 - 基础数据
+--
+-- 【用途】
+--   导入院系、专业、用户、教师、学生、学期、教室、课程、排课与公告等基础数据。
+--   本脚本不含选课记录与成绩，如需完整演示数据请继续执行 demo-data.sql。
+--
+-- 【执行顺序】
+--   schema.sql（建表）→ data.sql（基础数据）→ demo-data.sql（演示数据）
+--
+--   一键执行（推荐，自动切换目标库）：
+--     mysql -uroot -p < scripts/init-db.sql
+--
+--   手动执行（需指定目标库）：
+--     mysql -uroot -p <目标库> < data.sql
+--
+-- 【说明】
+--   1. 账号密码统一为 123456，存储格式 {noop}123456 由 Spring Security 的
+--      DelegatingPasswordEncoder 解析；通过管理端新建的用户自动使用 bcrypt 加密。
+--   2. 本脚本使用 ON DUPLICATE KEY UPDATE，可重复执行而不产生重复记录。
+--   3. 未包含 USE 语句，执行时请通过命令行参数指定目标数据库。
 -- =====================================================================
-
-USE `college_elective`;
 
 -- ---------------------------- 院系 ----------------------------
 INSERT INTO `department` (`id`, `dept_code`, `dept_name`, `dean_name`, `contact_phone`, `description`, `sort`)

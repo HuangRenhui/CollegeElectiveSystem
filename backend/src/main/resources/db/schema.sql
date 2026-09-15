@@ -1,7 +1,27 @@
 -- =====================================================================
 -- 高校选修课管理系统 - 数据库结构脚本
+--
 -- 数据库: MySQL 8.0+
 -- 字符集: utf8mb4 / utf8mb4_general_ci
+--
+-- 【使用场景】
+--   需要手动创建表结构时使用（创建 college_elective 库并建表）。
+--
+--   ⚠️ 开发环境通常无需执行本脚本：
+--      应用启动时会自动创建缺失的数据表（见 config/DatabaseInitializer.java），
+--      且不会删除已有数据。使用其他库名时，只需在 application-dev.yml 中
+--      修改连接串的库名即可，无需改动本脚本。
+--
+-- 【执行方式】
+--   mysql -uroot -p < schema.sql
+--
+-- 【风险提示】
+--   ⚠️ 本脚本包含 DROP TABLE IF EXISTS 语句，会清空本系统 13 张表的既有数据，
+--      但不会影响同库中其他业务表。生产环境请勿随意执行。
+--
+-- 【完整初始化顺序】
+--   schema.sql → data.sql → demo-data.sql
+--   或直接执行一键脚本：mysql -uroot -p < scripts/init-db.sql
 -- =====================================================================
 
 CREATE DATABASE IF NOT EXISTS `college_elective`
