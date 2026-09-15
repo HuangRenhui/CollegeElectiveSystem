@@ -71,6 +71,25 @@ export function selectionStatusTag(value) {
   return SELECTION_STATUS_MAP[value]?.type || 'info'
 }
 
+// ---------------------------- 选课方式 ----------------------------
+export const SELECT_TYPE_MAP = {
+  1: { text: '正常选课', type: 'info' },
+  2: { text: '管理员代选', type: 'warning' }
+}
+
+export const SELECT_TYPE_OPTIONS = Object.entries(SELECT_TYPE_MAP).map(([value, item]) => ({
+  value: Number(value),
+  label: item.text
+}))
+
+export function selectTypeText(value) {
+  return SELECT_TYPE_MAP[value]?.text || '正常选课'
+}
+
+export function selectTypeTag(value) {
+  return SELECT_TYPE_MAP[value]?.type || 'info'
+}
+
 // ---------------------------- 成绩状态 ----------------------------
 export const GRADE_STATUS_MAP = {
   0: { text: '草稿', type: 'info' },

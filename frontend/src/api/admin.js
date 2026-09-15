@@ -190,6 +190,31 @@ export function resetUserPassword(userId, newPassword = '123456') {
   return request({ url: `/admin/system/users/${userId}/password`, method: 'put', params: { newPassword } })
 }
 
+// ============================ 教务代选（管理员） ============================
+
+/** 查询指定学生的选课记录（供代选弹窗展示与退选操作） */
+export function listStudentSelections(studentId, params) {
+  return request({ url: `/admin/students/${studentId}/selections`, method: 'get', params })
+}
+
+/** 教务代选：为学生添加课程（selectType = 2） */
+export function addSelectionForStudent(studentId, courseId, reason) {
+  return request({
+    url: `/admin/students/${studentId}/selections`,
+    method: 'post',
+    params: { courseId, reason }
+  })
+}
+
+/** 教务代退选：撤销学生的选课记录（已录入成绩的不可退） */
+export function removeSelectionForStudent(studentId, courseId, reason) {
+  return request({
+    url: `/admin/students/${studentId}/selections/${courseId}`,
+    method: 'delete',
+    params: { reason }
+  })
+}
+
 export function switchSelection(state) {
   return request({ url: `/admin/system/selection-switch/${state}`, method: 'put' })
 }
