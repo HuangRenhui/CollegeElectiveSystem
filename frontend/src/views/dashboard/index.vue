@@ -21,6 +21,33 @@
 
     <!-- 学生概览 -->
     <template v-if="userStore.isStudent">
+      <!-- 选课倒计时提醒 -->
+      <el-alert
+        v-if="selection.phase.value !== 'unset'"
+        class="selection-banner"
+        :type="selection.isOpen.value ? 'success' : selection.phase.value === 'before' ? 'warning' : 'info'"
+        :closable="false"
+        show-icon
+      >
+        <template #title>
+          <div class="selection-banner__title">
+            <span>{{ selection.phaseText.value }}</span>
+            <el-tag v-if="!selection.isOpen.value" :type="selection.phaseTagType.value" size="small" effect="dark">
+              {{ selection.countdownText.value }}
+            </el-tag>
+            <el-button
+              v-if="selection.canSelect.value"
+              type="primary"
+              size="small"
+              @click="$router.push('/student/courses')"
+            >
+              去选课
+            </el-button>
+          </div>
+        </template>
+        <div>{{ selection.tipText.value }}</div>
+      </el-alert>
+
       <el-row :gutter="16" class="stat-row">
         <el-col :xs="12" :sm="6" v-for="item in studentStats" :key="item.label">
           <el-card shadow="hover" class="stat-card">
@@ -136,6 +163,23 @@
         <el-col :lg="12">
           <el-card shadow="never">
             <template #header><span>选课开关与快捷操作</span></template>
+            <el-alert
+              v-if="selection.phase.value !== 'unset'"
+              class="mb-16"
+              :type="selection.isOpen.value ? 'success' : selection.phase.value === 'before' ? 'warning' : 'info'"
+              :closable="false"
+              show-icon
+            >
+              <template #title>
+                <div class="selection-banner__title">
+                  <span>{{ selection.phaseText.value }}</span>
+                  <el-tag v-if="!selection.isOpen.value" :type="selection.phaseTagType.value" size="small" effect="dark">
+                    {{ selection.countdownText.value }}
+                  </el-tag>
+                </div>
+              </template>
+              <div>{{ selection.tipText.value }}</div>
+            </el-alert>
             <el-space wrap size="large">
               <el-tag :type="switchOn ? 'success' : 'danger'" size="large">
                 选课通道：{{ switchOn ? '已开启' : '已关闭' }}
@@ -143,43 +187,97 @@
               <el-button :type="switchOn ? 'danger' : 'success'" @click="toggleSwitch">
                 {{ switchOn ? '关闭选课' : '开启选课' }}
               </el-button>
-              <el-button type="primary" :loading="preloading" @click="doPreload">预热选课缓存</el-button>
-              <el-button @click="doSync">同步选课人数</el-button>
+              <el-button type="primary" @click="openPreload">预热选课缓存</el-button>
+              <el-button @click="openSync">同步选课人数</el-button>
+              <el-button @click="$router.push('/admin/semesters')">设置选课时间</el-button>
             </el-space>
             <el-alert
               class="mt-16"
               type="info"
               :closable="false"
-              title="选课缓存说明"
-              description="开启选课前建议先执行缓存预热，将课程余量写入 Redis，可显著提升高并发选课性能。"
+              title="操作说明"
+              description="开放选课前建议先执行「预热选课缓存」，以保障选课期间余量数据的准确与响应速度；如发现余量与实际人数不一致，可执行「同步选课人数」进行校正。"
             />
           </el-card>
         </el-col>
       </el-row>
     </template>
+
+    <!-- 缓存预热弹窗 -->
+    <el-dialog v-model="preloadVisible" title="预热选课缓存" width="520px" :close-on-click-modal="false">
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="预热说明"
+        description="将本学期课程的余量与已选学生名单写入缓存，用于提升选课期间的响应速度。建议在每日开放选课前执行一次。"
+      />
+
+      <el-form label-width="90px" class="mt-16">
+        <el-form-item label="目标学期">
+          <el-select v-model="preloadSemesterId" placeholder="请选择学期" clearable style="width: 100%">
+            <el-option v-for="s in semesters" :key="s.id" :label="s.semesterName" :value="s.id" />
+          </el-select>
+          <div class="form-tip">不选择时默认使用当前学期（{{ appStore.currentSemester?.semesterName || '未设置' }}）。</div>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="preloadVisible = false">取消</el-button>
+        <el-button type="primary" :loading="preloading" @click="doPreload">开始预热</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 同步选课人数弹窗 -->
+    <el-dialog v-model="syncVisible" title="同步选课人数" width="520px" :close-on-click-modal="false">
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="同步说明"
+        description="将按选课记录重新统计各课程的已选人数，并覆盖缓存的余量数据。当页面显示的余量与实际情况不一致时使用。"
+      />
+      <p class="text-muted mt-16">同步过程可能耗时较长，请勿重复提交。</p>
+
+      <template #footer>
+        <el-button @click="syncVisible = false">取消</el-button>
+        <el-button type="primary" :loading="syncing" @click="doSync">确定同步</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAppStore } from '@/store/modules/app'
 import { useUserStore } from '@/store/modules/user'
 import { listMySelections, getMyGradeReport } from '@/api/student'
 import { listMyCourses } from '@/api/teacher'
 import { getStatistics, getSelectionSwitch, switchSelection, preloadCourseCache, syncSelectionCount } from '@/api/admin'
+import { listSemesterOptions } from '@/api/common'
+import { useSelectionCountdown } from '@/utils/useSelectionCountdown'
 import { courseTypeText, noticeTypeText } from '@/utils/dict'
 
 const appStore = useAppStore()
 const userStore = useUserStore()
 
+/** 学生选课窗口倒计时（仅学生角色使用） */
+const selection = useSelectionCountdown(computed(() => appStore.currentSemester))
+
 const loading = ref(false)
 const preloading = ref(false)
+const syncing = ref(false)
 const switchOn = ref(true)
 const statistics = reactive({})
 const mySelections = ref([])
 const myCourses = ref([])
+const semesters = ref([])
 const studentSummary = reactive({ totalCredit: 0, earnedCredit: 0, averageScore: 0, courseCount: 0 })
+
+const preloadVisible = ref(false)
+const preloadSemesterId = ref(null)
+const syncVisible = ref(false)
 
 const greeting = computed(() => {
   const hour = new Date().getHours()
@@ -251,6 +349,7 @@ async function loadData() {
       const [statRes, switchRes] = await Promise.all([getStatistics({}), getSelectionSwitch()])
       Object.assign(statistics, statRes.data || {})
       switchOn.value = switchRes.data !== 'off'
+      loadSemesters()
     }
   } catch {
     // 错误已由请求拦截器提示
@@ -259,26 +358,65 @@ async function loadData() {
   }
 }
 
+async function loadSemesters() {
+  try {
+    const { data } = await listSemesterOptions()
+    semesters.value = data || []
+    const current = (data || []).find((item) => item.isCurrent === 1)
+    preloadSemesterId.value = current ? current.id : null
+  } catch {
+    semesters.value = []
+  }
+}
+
 async function toggleSwitch() {
   const next = switchOn.value ? 'off' : 'on'
+  await ElMessageBox.confirm(
+    next === 'on'
+      ? '开启后学生即可提交选课申请，确定开启选课通道吗？'
+      : '关闭后学生将无法提交选课申请，确定关闭选课通道吗？',
+    next === 'on' ? '开启选课确认' : '关闭选课确认',
+    { type: 'warning', confirmButtonText: next === 'on' ? '确定开启' : '确定关闭' }
+  )
   await switchSelection(next)
   switchOn.value = next === 'on'
   ElMessage.success(next === 'on' ? '选课通道已开启' : '选课通道已关闭')
 }
 
+function openPreload() {
+  preloadVisible.value = true
+}
+
 async function doPreload() {
   preloading.value = true
   try {
-    await preloadCourseCache(appStore.currentSemester?.id)
+    await preloadCourseCache(preloadSemesterId.value || appStore.currentSemester?.id)
+    preloadVisible.value = false
     ElMessage.success('缓存预热完成')
+    await loadData()
+  } catch {
+    // 未实现或执行失败已由拦截器提示，保留弹窗便于调整后重试
   } finally {
     preloading.value = false
   }
 }
 
+function openSync() {
+  syncVisible.value = true
+}
+
 async function doSync() {
-  await syncSelectionCount()
-  ElMessage.success('选课人数同步完成')
+  syncing.value = true
+  try {
+    await syncSelectionCount()
+    syncVisible.value = false
+    ElMessage.success('选课人数同步完成')
+    await loadData()
+  } catch {
+    // 未实现或执行失败已由拦截器提示
+  } finally {
+    syncing.value = false
+  }
 }
 </script>
 
@@ -312,6 +450,20 @@ async function doSync() {
 
 .stat-row {
   margin-bottom: 0;
+}
+
+.selection-banner {
+  margin-bottom: 16px;
+
+  &__title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+}
+
+.mb-16 {
+  margin-bottom: 16px;
 }
 
 .stat-card {
@@ -362,6 +514,12 @@ async function doSync() {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.6;
 }
 
 .mt-16 {
