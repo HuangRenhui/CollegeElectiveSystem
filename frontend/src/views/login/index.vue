@@ -9,7 +9,6 @@
         <el-icon :size="52" color="#fff"><School /></el-icon>
         <h1 class="login__brand-title">高校选修课管理系统</h1>
         <p class="login__brand-desc">
-          基于 Spring Boot 3 + Vue 3 + Redis 构建<br />
           高性能选课 · 智能冲突检测 · 全流程教务管理
         </p>
         <ul class="login__feature-list">
@@ -53,19 +52,21 @@
           </el-button>
         </el-form>
 
-        <el-divider>演示账号（密码均为 123456）</el-divider>
-        <div class="login__demo">
-          <el-tag
-            v-for="account in demoAccounts"
-            :key="account.username"
-            :type="account.type"
-            effect="plain"
-            class="login__demo-tag"
-            @click="fillAccount(account)"
-          >
-            {{ account.label }}：{{ account.username }}
-          </el-tag>
-        </div>
+        <template v-if="showDemoAccounts">
+          <el-divider>演示账号（密码均为 123456）</el-divider>
+          <div class="login__demo">
+            <el-tag
+              v-for="account in demoAccounts"
+              :key="account.username"
+              :type="account.type"
+              effect="plain"
+              class="login__demo-tag"
+              @click="fillAccount(account)"
+            >
+              {{ account.label }}：{{ account.username }}
+            </el-tag>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -80,6 +81,9 @@ import { useUserStore } from '@/store/modules/user'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+
+/** 是否展示演示账号：仅开发环境开启，可通过环境变量 VITE_SHOW_DEMO_ACCOUNTS 控制 */
+const showDemoAccounts = import.meta.env.VITE_SHOW_DEMO_ACCOUNTS === 'true'
 
 const formRef = ref()
 const loading = ref(false)
