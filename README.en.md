@@ -203,7 +203,7 @@ npm install
 npm run dev
 ```
 
-The dev server runs at http://localhost:5173 and proxies `/api` to `http://localhost:8080`.
+The dev server runs at http://localhost:5174 and proxies `/api` to `http://localhost:8080`.
 
 #### 5. Build for production
 
