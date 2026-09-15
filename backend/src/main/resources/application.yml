@@ -50,6 +50,10 @@ mybatis-plus:
 
 # 业务自定义配置
 elective:
+  # 数据库表结构自动初始化：开发环境启动时自动创建缺失的数据表
+  # 仅在不含 prod 的环境生效；已存在的表不会被修改或删除
+  database:
+    auto-init: true
   jwt:
     # 生产环境请通过环境变量 JWT_SECRET 覆盖
     secret: ${JWT_SECRET:CollegeElectiveSystemSecretKeyForJwtTokenMustBeLongEnough2026}

@@ -25,6 +25,11 @@ spring:
           min-idle: 20
           max-wait: 3000ms
 
+elective:
+  # 生产环境禁止自动建表，表结构变更须经审核后手工执行
+  database:
+    auto-init: false
+
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
