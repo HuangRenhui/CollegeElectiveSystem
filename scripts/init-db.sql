@@ -1,16 +1,35 @@
 -- =====================================================================
--- 一键初始化脚本（便捷入口）
+-- 高校选修课管理系统 - 一键初始化脚本
 --
--- 使用方式：
---   mysql -uroot -p < scripts/init-db.sql
+-- 【用途】
+--   一次性完成「建库建表 + 基础数据 + 演示数据」，
+--   执行完成后启动应用即可看到完整业务数据。
 --
--- 说明：本脚本按顺序执行建表与初始化数据。
---      若使用 Docker Compose 部署，无需手动执行，容器首次启动会自动完成。
+-- 【使用方式】
+--   在项目根目录执行：
+--     mysql -uroot -p < scripts/init-db.sql
+--
+--   若数据库需要密码：
+--     mysql -uroot -p你的密码 < scripts/init-db.sql
+--
+-- 【执行内容】
+--   1. schema.sql     建库建表（⚠️ 会清空本系统 13 张表的既有数据）
+--   2. data.sql       基础数据（院系、专业、用户、课程、教室、学期、公告）
+--   3. demo-data.sql  演示数据（选课记录、成绩、操作日志）
+--
+-- 【演示账号】密码统一为 123456
+--   管理员  admin
+--   教师    T2026001 ~ T2026008
+--   学生    2026010101（2026级）、2023010101（2023级，含历史成绩）
+--
+-- 【说明】
+--   - 开发环境下应用启动会**自动创建缺失的表结构**，因此如需跳过建表，
+--     可只执行 data.sql 与 demo-data.sql。
+--   - demo-data.sql 可重复执行，不会产生重复数据。
+--   - Docker 环境下容器首次启动会自动执行 schema 与 data，
+--     演示数据需手动补充（见 docs/演示数据说明.md）。
 -- =====================================================================
 
 SOURCE ../backend/src/main/resources/db/schema.sql;
 SOURCE ../backend/src/main/resources/db/data.sql;
-
-SELECT '数据库初始化完成' AS message,
-       (SELECT COUNT(*) FROM college_elective.course) AS course_count,
-       (SELECT COUNT(*) FROM college_elective.sys_user) AS user_count;
+SOURCE ../backend/src/main/resources/db/demo-data.sql;
