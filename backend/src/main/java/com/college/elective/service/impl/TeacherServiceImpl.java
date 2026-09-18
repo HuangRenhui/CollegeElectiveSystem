@@ -62,11 +62,7 @@ public class TeacherServiceImpl extends ServiceImpl<TeacherMapper, Teacher> impl
     @Transactional(rollbackFor = Exception.class)
     public void createTeacher(TeacherDTO dto) {
         validateTeacherNoUnique(dto.getTeacherNo(), null);
-
-        Long userCount = userMapper.selectCount(Wrappers.<SysUser>lambdaQuery()
-                .eq(SysUser::getUsername, dto.getTeacherNo()));
-        BusinessException.throwIf(userCount != null && userCount > 0, ResultCode.USERNAME_EXISTS,
-                "登录账号 " + dto.getTeacherNo() + " 已存在");
+        validateUsernameUnique(dto.getTeacherNo(), null);
 
         SysUser user = new SysUser();
         user.setUsername(dto.getTeacherNo());
@@ -97,6 +93,7 @@ public class TeacherServiceImpl extends ServiceImpl<TeacherMapper, Teacher> impl
         Teacher exist = getById(dto.getId());
         BusinessException.throwIf(exist == null, ResultCode.TEACHER_NOT_FOUND);
         validateTeacherNoUnique(dto.getTeacherNo(), dto.getId());
+        validateUsernameUnique(dto.getTeacherNo(), exist.getUserId());
 
         Teacher teacher = new Teacher();
         teacher.setId(dto.getId());
@@ -116,11 +113,37 @@ public class TeacherServiceImpl extends ServiceImpl<TeacherMapper, Teacher> impl
         userMapper.updateById(user);
     }
 
+    /**
+     * 校验工号在 teacher 表中是否唯一。
+     *
+     * @param teacherNo 待校验的工号
+     * @param excludeId 需要排除的教师ID，编辑时传入自身ID以避免误判，新增时传 {@code null}
+     */
     private void validateTeacherNoUnique(String teacherNo, Long excludeId) {
         Long count = baseMapper.selectCount(Wrappers.<Teacher>lambdaQuery()
                 .eq(Teacher::getTeacherNo, teacherNo)
                 .ne(excludeId != null, Teacher::getId, excludeId));
         BusinessException.throwIf(count != null && count > 0, ResultCode.DATA_ALREADY_EXISTS, "工号已存在");
+    }
+
+    /**
+     * 校验工号作为登录账号是否唯一。
+     *
+     * <p>教师的工号会同时写入 {@code teacher.teacher_no} 与 {@code sys_user.username}，
+     * 而 {@code sys_user} 为师生共用的用户表。仅校验 {@code teacher} 表无法覆盖
+     * 「该工号已被学生学号或管理员账号占用」的情况，届时 {@code updateById} 会触发
+     * 数据库唯一索引异常，返回给前端的报错难以理解。故此处单独校验一次，
+     * 以便给出明确的业务提示。</p>
+     *
+     * @param username      待校验的登录账号（即工号）
+     * @param excludeUserId 需要排除的用户ID，编辑时传入该教师原有的用户ID，新增时传 {@code null}
+     */
+    private void validateUsernameUnique(String username, Long excludeUserId) {
+        Long count = userMapper.selectCount(Wrappers.<SysUser>lambdaQuery()
+                .eq(SysUser::getUsername, username)
+                .ne(excludeUserId != null, SysUser::getId, excludeUserId));
+        BusinessException.throwIf(count != null && count > 0, ResultCode.USERNAME_EXISTS,
+                "登录账号 " + username + " 已存在");
     }
 
     @Override
