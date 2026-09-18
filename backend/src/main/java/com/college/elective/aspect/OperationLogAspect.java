@@ -2,6 +2,7 @@ package com.college.elective.aspect;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.college.elective.common.IpUtils;
 import com.college.elective.entity.SysLog;
 import com.college.elective.security.LoginUser;
 import com.college.elective.security.SecurityUtils;
@@ -71,7 +72,7 @@ public class OperationLogAspect {
 
         if (request != null) {
             sysLog.setRequestUri(request.getRequestURI());
-            sysLog.setIp(resolveIp(request));
+            sysLog.setIp(IpUtils.resolveIp(request));
         }
 
         Optional<LoginUser> loginUser = SecurityUtils.getLoginUserOptional();
@@ -105,19 +106,5 @@ public class OperationLogAspect {
         ServletRequestAttributes attributes =
                 (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         return attributes == null ? null : attributes.getRequest();
-    }
-
-    private String resolveIp(HttpServletRequest request) {
-        String ip = request.getHeader("X-Forwarded-For");
-        if (StrUtil.isBlank(ip) || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("X-Real-IP");
-        }
-        if (StrUtil.isBlank(ip) || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        if (StrUtil.isNotBlank(ip) && ip.contains(",")) {
-            ip = ip.split(",")[0].trim();
-        }
-        return "0:0:0:0:0:0:0:1".equals(ip) ? "127.0.0.1" : ip;
     }
 }

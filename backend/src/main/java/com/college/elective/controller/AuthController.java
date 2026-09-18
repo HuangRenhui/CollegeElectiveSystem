@@ -1,7 +1,7 @@
 package com.college.elective.controller;
 
-import cn.hutool.core.util.StrUtil;
 import com.college.elective.aspect.OperationLog;
+import com.college.elective.common.IpUtils;
 import com.college.elective.common.Result;
 import com.college.elective.dto.ChangePasswordDTO;
 import com.college.elective.dto.LoginDTO;
@@ -30,7 +30,7 @@ public class AuthController {
     @Operation(summary = "用户登录", description = "支持学生、教师、管理员统一登录，返回 JWT 令牌")
     @PostMapping("/login")
     public Result<LoginVO> login(@Valid @RequestBody LoginDTO loginDTO, HttpServletRequest request) {
-        return Result.success("登录成功", sysUserService.login(loginDTO, resolveIp(request)));
+        return Result.success("登录成功", sysUserService.login(loginDTO, IpUtils.resolveIp(request)));
     }
 
     @Operation(summary = "退出登录")
@@ -61,16 +61,5 @@ public class AuthController {
     public Result<Void> updateProfile(@RequestBody SysUser user) {
         sysUserService.updateProfile(user);
         return Result.success("资料更新成功", null);
-    }
-
-    private String resolveIp(HttpServletRequest request) {
-        String ip = request.getHeader("X-Forwarded-For");
-        if (StrUtil.isBlank(ip) || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        if (StrUtil.isNotBlank(ip) && ip.contains(",")) {
-            ip = ip.split(",")[0].trim();
-        }
-        return "0:0:0:0:0:0:0:1".equals(ip) ? "127.0.0.1" : ip;
     }
 }
