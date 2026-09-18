@@ -17,7 +17,7 @@ import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSeriali
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 /**
- * Redis 配置：序列化方式、缓存管理器以及选课/退课原子脚本。
+ * Redis 配置：序列化方式、缓存管理器以及选课、退课、登录失败计数等原子脚本。
  */
 @Configuration
 public class RedisConfig {
@@ -65,6 +65,20 @@ public class RedisConfig {
     public DefaultRedisScript<Long> dropCourseScript() {
         DefaultRedisScript<Long> script = new DefaultRedisScript<>();
         script.setLocation(new ClassPathResource("lua/drop_course.lua"));
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    /**
+     * 登录失败计数原子脚本：计数累加并设置首次失败的过期时间。
+     *
+     * <p>将 INCR 与 EXPIRE 合并为一次原子执行，避免两条命令之间出现异常
+     * 导致 Key 未设置 TTL、账号被永久锁定。</p>
+     */
+    @Bean
+    public DefaultRedisScript<Long> recordLoginFailScript() {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("lua/record_login_fail.lua"));
         script.setResultType(Long.class);
         return script;
     }

@@ -16,23 +16,25 @@ import com.college.elective.entity.SysUser;
 import com.college.elective.entity.Teacher;
 import com.college.elective.mapper.DepartmentMapper;
 import com.college.elective.mapper.MajorMapper;
-import com.college.elective.mapper.StudentMapper;
 import com.college.elective.mapper.SysUserMapper;
-import com.college.elective.mapper.TeacherMapper;
 import com.college.elective.security.JwtTokenProvider;
 import com.college.elective.security.LoginUser;
 import com.college.elective.security.SecurityUtils;
+import com.college.elective.service.StudentService;
 import com.college.elective.service.SysUserService;
+import com.college.elective.service.TeacherService;
 import com.college.elective.vo.LoginVO;
 import com.college.elective.vo.UserInfoVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -53,10 +55,12 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider tokenProvider;
     private final StringRedisTemplate stringRedisTemplate;
-    private final StudentMapper studentMapper;
-    private final TeacherMapper teacherMapper;
+    private final StudentService studentService;
+    private final TeacherService teacherService;
     private final DepartmentMapper departmentMapper;
     private final MajorMapper majorMapper;
+    /** 登录失败计数原子脚本（INCR + EXPIRE 合并执行） */
+    private final DefaultRedisScript<Long> recordLoginFailScript;
 
     @Override
     public LoginVO login(LoginDTO loginDTO, String clientIp) {
@@ -75,7 +79,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
                 .last("LIMIT 1"));
 
         if (user == null || !passwordEncoder.matches(loginDTO.getPassword(), user.getPassword())) {
-            recordLoginFail(failKey, failCount);
+            recordLoginFail(failKey);
             throw new BusinessException(ResultCode.LOGIN_FAILED);
         }
 
@@ -83,13 +87,13 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
             throw new BusinessException(ResultCode.ACCOUNT_DISABLED);
         }
 
-        // 登录成功：清理失败计数、写入登录扩展信息缓存
+        // 登录成功：清除失败计数，避免历史失败次数影响后续登录
         stringRedisTemplate.delete(failKey);
         cacheUserExtension(user);
 
         String token = tokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole());
 
-        // 记录登录痕迹
+        // 记录本次登录痕迹（时间与 IP），供安全审计追溯
         SysUser update = new SysUser();
         update.setId(user.getId());
         update.setLastLoginTime(LocalDateTime.now());
@@ -110,11 +114,30 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
                 .build();
     }
 
-    private void recordLoginFail(String failKey, int currentCount) {
-        stringRedisTemplate.opsForValue().increment(failKey);
-        if (currentCount == 0) {
-            stringRedisTemplate.expire(failKey, LOCK_MINUTES, TimeUnit.MINUTES);
-        }
+    /**
+     * 记录一次登录失败，用于账号锁定判定。
+     *
+     * <p>失败次数累加 1；若本次为首次失败（计数为 1），
+     * 则设置 {@code LOCK_MINUTES} 分钟的过期时间作为锁定窗口。
+     * 窗口内失败次数达到 {@code MAX_LOGIN_FAIL} 后账号被临时锁定，
+     * 待 Key 过期后自动解锁。</p>
+     *
+     * <p>计数与设置过期时间由 {@code lua/record_login_fail.lua} 在同一次
+     * Redis 执行中完成。若拆为两条命令，一旦在两者之间发生连接中断，
+     * Key 将已创建却未设置 TTL，导致账号被永久锁定。</p>
+     *
+     * <p>脚本仅在首次失败时设置过期时间，后续失败不续期，
+     * 避免攻击者通过慢速重试无限延长尝试窗口。</p>
+     *
+     * @param failKey 登录失败计数在 Redis 中的键，形如 {@code elective:login:fail:{username}}
+     */
+    private void recordLoginFail(String failKey) {
+        // 过期时间以秒为单位传入脚本（ARGV 仅接受字符串）
+        long expireSeconds = LOCK_MINUTES * 60;
+        stringRedisTemplate.execute(
+                recordLoginFailScript,
+                Collections.singletonList(failKey),
+                String.valueOf(expireSeconds));
     }
 
     /**
@@ -123,15 +146,13 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     private void cacheUserExtension(SysUser user) {
         Map<String, String> extension = new HashMap<>(4);
         if (Constants.ROLE_STUDENT.equals(user.getRole())) {
-            Student student = studentMapper.selectOne(Wrappers.<Student>lambdaQuery()
-                    .eq(Student::getUserId, user.getId()).last("LIMIT 1"));
+            Student student = studentService.getByUserId(user.getId());
             if (student != null) {
                 extension.put("studentId", String.valueOf(student.getId()));
                 extension.put("deptId", String.valueOf(student.getDeptId()));
             }
         } else if (Constants.ROLE_TEACHER.equals(user.getRole())) {
-            Teacher teacher = teacherMapper.selectOne(Wrappers.<Teacher>lambdaQuery()
-                    .eq(Teacher::getUserId, user.getId()).last("LIMIT 1"));
+            Teacher teacher = teacherService.getByUserId(user.getId());
             if (teacher != null) {
                 extension.put("teacherId", String.valueOf(teacher.getId()));
                 extension.put("deptId", String.valueOf(teacher.getDeptId()));
@@ -170,8 +191,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         vo.setAvatar(user.getAvatar());
 
         if (Constants.ROLE_STUDENT.equals(user.getRole())) {
-            Student student = studentMapper.selectOne(Wrappers.<Student>lambdaQuery()
-                    .eq(Student::getUserId, user.getId()).last("LIMIT 1"));
+            Student student = studentService.getByUserId(user.getId());
             if (student != null) {
                 vo.setStuNo(student.getStuNo());
                 vo.setClassName(student.getClassName());
@@ -179,8 +199,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
                 fillDeptAndMajor(vo, student.getDeptId(), student.getMajorId());
             }
         } else if (Constants.ROLE_TEACHER.equals(user.getRole())) {
-            Teacher teacher = teacherMapper.selectOne(Wrappers.<Teacher>lambdaQuery()
-                    .eq(Teacher::getUserId, user.getId()).last("LIMIT 1"));
+            Teacher teacher = teacherService.getByUserId(user.getId());
             if (teacher != null) {
                 vo.setTeacherNo(teacher.getTeacherNo());
                 vo.setTitle(teacher.getTitle());
