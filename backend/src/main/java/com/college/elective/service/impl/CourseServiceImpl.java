@@ -319,11 +319,18 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     @Override
     public void validateScheduleConflict(CourseDTO dto) {
-        if (dto.getSchedules() == null || dto.getSchedules().isEmpty()) {
+        List<CourseScheduleDTO> list = dto.getSchedules();
+        if (list == null || list.isEmpty()) {
             return;
         }
-        // 课程内部多条排课相互校验
-        List<CourseScheduleDTO> list = dto.getSchedules();
+
+        // 1. 先校验字段合法性，保证后续区间比较基于合法数据，
+        //    否则非法区间（如开始节次大于结束节次）会先触发重叠报错，掩盖真实问题
+        for (int i = 0; i < list.size(); i++) {
+            validateScheduleField(list.get(i), i);
+        }
+
+        // 2. 课程内部多条排课之间不允许重叠
         for (int i = 0; i < list.size(); i++) {
             for (int j = i + 1; j < list.size(); j++) {
                 if (schedulesOverlap(list.get(i), list.get(j))) {
@@ -333,60 +340,211 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             }
         }
 
-        for (CourseScheduleDTO schedule : list) {
-            if (schedule.getStartSection() > schedule.getEndSection()) {
-                throw new BusinessException(ResultCode.PARAM_ERROR, "开始节次不能大于结束节次");
-            }
-            if (schedule.getStartWeek() != null && schedule.getEndWeek() != null
-                    && schedule.getStartWeek() > schedule.getEndWeek()) {
-                throw new BusinessException(ResultCode.PARAM_ERROR, "起始周不能大于结束周");
-            }
+        // 3. 教师与教室冲突：一次性取出该学期相关排课，在内存中比对，
+        //    避免在循环内逐条查询造成 N+1
+        List<CourseSchedule> existing = loadExistingSchedules(dto);
+        for (int i = 0; i < list.size(); i++) {
+            CourseScheduleDTO schedule = list.get(i);
+            checkTeacherConflict(dto, schedule, existing);
+            checkClassroomConflict(dto, schedule, existing);
+        }
 
-            // 教师冲突
-            if (dto.getTeacherId() != null) {
-                int teacherConflict = scheduleMapper.countTeacherConflict(
-                        dto.getTeacherId(), dto.getSemesterId(), dto.getId(),
-                        schedule.getDayOfWeek(), schedule.getStartSection(), schedule.getEndSection(),
-                        schedule.getStartWeek(), schedule.getEndWeek());
-                if (teacherConflict > 0) {
-                    throw new BusinessException(ResultCode.SELECTION_CONFLICT,
-                            "教师在该时段已有其他排课，请调整上课时间");
-                }
-            }
+        // 4. 教室容量校验：容量不足属于业务约束，不能仅记录警告后放过，
+        //    否则排课可保存但学生无法容纳
+        checkClassroomCapacity(dto, list);
+    }
 
-            // 教室冲突
-            if (schedule.getClassroomId() != null) {
-                int roomConflict = scheduleMapper.countClassroomConflict(
-                        schedule.getClassroomId(), dto.getSemesterId(), dto.getId(),
-                        schedule.getDayOfWeek(), schedule.getStartSection(), schedule.getEndSection(),
-                        schedule.getStartWeek(), schedule.getEndWeek());
-                if (roomConflict > 0) {
-                    throw new BusinessException(ResultCode.SELECTION_CONFLICT,
-                            "该教室在此时段已被占用，请更换教室或调整时间");
-                }
-                Classroom classroom = classroomMapper.selectById(schedule.getClassroomId());
-                if (classroom != null && classroom.getCapacity() < dto.getMaxCapacity()) {
-                    log.warn("教室容量({})小于课程容量({})，courseId={}", classroom.getCapacity(),
-                            dto.getMaxCapacity(), dto.getId());
-                }
+    /**
+     * 校验单条排课的字段合法性。
+     *
+     * @param schedule 排课参数
+     * @param index    在列表中的下标，用于定位报错位置
+     */
+    private void validateScheduleField(CourseScheduleDTO schedule, int index) {
+        String position = "第 " + (index + 1) + " 条排课：";
+        BusinessException.throwIf(schedule.getDayOfWeek() == null, ResultCode.PARAM_ERROR,
+                position + "请选择上课星期");
+        BusinessException.throwIf(schedule.getStartSection() == null || schedule.getEndSection() == null,
+                ResultCode.PARAM_ERROR, position + "请填写起止节次");
+        BusinessException.throwIf(schedule.getStartSection() > schedule.getEndSection(),
+                ResultCode.PARAM_ERROR, position + "开始节次不能大于结束节次");
+
+        Integer startWeek = defaultStartWeek(schedule);
+        Integer endWeek = defaultEndWeek(schedule);
+        BusinessException.throwIf(startWeek > endWeek, ResultCode.PARAM_ERROR,
+                position + "起始周不能大于结束周");
+    }
+
+    /**
+     * 加载与本次排课相关的既有排课记录，供冲突比对使用。
+     *
+     * <p>按教师与教室两个维度分别查询一次，替代原先在循环内逐条统计的做法。
+     * 更新课程时需排除自身记录（{@code dto.getId()}）。</p>
+     *
+     * @param dto 课程参数
+     * @return 该学期内与本次排课涉及同一教师或同一教室的排课记录
+     */
+    private List<CourseSchedule> loadExistingSchedules(CourseDTO dto) {
+        if (dto.getSemesterId() == null) {
+            return Collections.emptyList();
+        }
+        Set<Long> classroomIds = dto.getSchedules().stream()
+                .map(CourseScheduleDTO::getClassroomId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        return scheduleMapper.selectRelatedSchedules(dto.getSemesterId(), dto.getTeacherId(),
+                classroomIds.isEmpty() ? null : classroomIds, dto.getId());
+    }
+
+    /**
+     * 校验教师在该时段是否已有其他排课。
+     */
+    private void checkTeacherConflict(CourseDTO dto, CourseScheduleDTO schedule,
+                                      List<CourseSchedule> existing) {
+        if (dto.getTeacherId() == null) {
+            return;
+        }
+        boolean conflict = existing.stream().anyMatch(item ->
+                Objects.equals(item.getTeacherId(), dto.getTeacherId())
+                        && schedulesOverlap(schedule, item));
+        BusinessException.throwIf(conflict, ResultCode.SELECTION_CONFLICT,
+                "教师在该时段已有其他排课，请调整上课时间");
+    }
+
+    /**
+     * 校验教室在该时段是否已被占用。
+     */
+    private void checkClassroomConflict(CourseDTO dto, CourseScheduleDTO schedule,
+                                        List<CourseSchedule> existing) {
+        if (schedule.getClassroomId() == null) {
+            return;
+        }
+        boolean conflict = existing.stream().anyMatch(item ->
+                Objects.equals(item.getClassroomId(), schedule.getClassroomId())
+                        && schedulesOverlap(schedule, item));
+        BusinessException.throwIf(conflict, ResultCode.SELECTION_CONFLICT,
+                "该教室在此时段已被占用，请更换教室或调整时间");
+    }
+
+    /**
+     * 校验所选教室容量是否满足课程容量要求。
+     *
+     * <p>教室容量小于课程容量时拒绝保存：若仅记录警告，课程虽可排课，
+     * 但选课阶段将出现学生无法容纳的问题。</p>
+     *
+     * @param dto  课程参数
+     * @param list 排课列表
+     */
+    private void checkClassroomCapacity(CourseDTO dto, List<CourseScheduleDTO> list) {
+        if (dto.getMaxCapacity() == null) {
+            return;
+        }
+        // 同一教室可能被多个时段复用，先收集去重，一次性查询
+        Set<Long> classroomIds = list.stream()
+                .map(CourseScheduleDTO::getClassroomId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (classroomIds.isEmpty()) {
+            return;
+        }
+
+        Map<Long, Classroom> classroomMap = classroomMapper.selectBatchIds(classroomIds).stream()
+                .collect(Collectors.toMap(Classroom::getId, Function.identity(), (a, b) -> a));
+        for (Long classroomId : classroomIds) {
+            Classroom classroom = classroomMap.get(classroomId);
+            if (classroom == null) {
+                continue;
             }
+            BusinessException.throwIf(classroom.getCapacity() != null
+                            && classroom.getCapacity() < dto.getMaxCapacity(),
+                    ResultCode.PARAM_ERROR,
+                    "教室「" + StrUtil.blankToDefault(classroom.getRoomNo(), String.valueOf(classroomId))
+                            + "」容量为 " + classroom.getCapacity()
+                            + "，小于课程容量 " + dto.getMaxCapacity() + "，请更换教室或调整课程容量");
         }
     }
 
+    /**
+     * 判断两条排课的时段是否重叠（星期、节次、周次三个维度均需重叠）。
+     *
+     * @param a 排课参数
+     * @param b 另一条排课参数
+     * @return {@code true} 表示时段重叠
+     */
     private boolean schedulesOverlap(CourseScheduleDTO a, CourseScheduleDTO b) {
-        if (!a.getDayOfWeek().equals(b.getDayOfWeek())) {
+        return overlaps(a.getDayOfWeek(), defaultStartWeek(a), defaultEndWeek(a), a.getWeekType(),
+                b.getDayOfWeek(), defaultStartWeek(b), defaultEndWeek(b), b.getWeekType());
+    }
+
+    /**
+     * 判断排课参数与既有排课记录是否重叠。
+     */
+    private boolean schedulesOverlap(CourseScheduleDTO dto, CourseSchedule entity) {
+        return overlaps(dto.getDayOfWeek(), defaultStartWeek(dto), defaultEndWeek(dto), dto.getWeekType(),
+                entity.getDayOfWeek(), defaultStartWeek(entity), defaultEndWeek(entity), entity.getWeekType());
+    }
+
+    /**
+     * 时段重叠判定：星期相同、节次区间相交、周次区间相交且存在实际同上的周次。
+     *
+     * <p>周次类型的影响：任一方为 ALL 或两者类型相同，则周次区间相交即冲突；
+     * 若一方为 ODD、另一方为 EVEN，需在公共周次区间内存在同奇偶的周次才算冲突。
+     * 例如 ODD 排在第 1-8 周、EVEN 排在第 5-12 周时，第 6、8 周同为偶数的
+     * 公共周次上无法同时上课，仍应判定为冲突。</p>
+     *
+     * @return {@code true} 表示存在重叠
+     */
+    private boolean overlaps(Integer dayA, int startWeekA, int endWeekA, String weekTypeA,
+                             Integer dayB, int startWeekB, int endWeekB, String weekTypeB) {
+        if (!Objects.equals(dayA, dayB)) {
             return false;
         }
-        boolean sectionOverlap = a.getStartSection() <= b.getEndSection()
-                && a.getEndSection() >= b.getStartSection();
-        if (!sectionOverlap) {
+        if (startWeekA > endWeekB || endWeekA < startWeekB) {
             return false;
         }
-        int aStart = a.getStartWeek() == null ? 1 : a.getStartWeek();
-        int aEnd = a.getEndWeek() == null ? 16 : a.getEndWeek();
-        int bStart = b.getStartWeek() == null ? 1 : b.getStartWeek();
-        int bEnd = b.getEndWeek() == null ? 16 : b.getEndWeek();
-        return aStart <= bEnd && aEnd >= bStart;
+        // 任一方每周上课，或两者周次类型一致时，周次区间相交即为冲突
+        if (Constants.WEEK_TYPE_ALL.equals(weekTypeA)
+                || Constants.WEEK_TYPE_ALL.equals(weekTypeB)
+                || Objects.equals(weekTypeA, weekTypeB)) {
+            return true;
+        }
+        // 单双周类型不同：逐个公共周次检查是否存在两者同时上课的周
+        int from = Math.max(startWeekA, startWeekB);
+        int to = Math.min(endWeekA, endWeekB);
+        for (int week = from; week <= to; week++) {
+            boolean odd = week % 2 == 1;
+            boolean matchA = Constants.WEEK_TYPE_ODD.equals(weekTypeA) == odd;
+            boolean matchB = Constants.WEEK_TYPE_ODD.equals(weekTypeB) == odd;
+            if (matchA && matchB) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 起始周默认值：未指定时视为第 1 周，与 CourseScheduleDTO 的字段默认值保持一致 */
+    private static final int DEFAULT_START_WEEK = 1;
+
+    /** 结束周默认值：未指定时视为第 16 周，与 CourseScheduleDTO 的字段默认值保持一致 */
+    private static final int DEFAULT_END_WEEK = 16;
+
+    /** 起始周默认值：未指定时视为第 1 周 */
+    private int defaultStartWeek(CourseScheduleDTO schedule) {
+        return schedule.getStartWeek() == null ? DEFAULT_START_WEEK : schedule.getStartWeek();
+    }
+
+    /** 结束周默认值：未指定时视为学期末周 */
+    private int defaultEndWeek(CourseScheduleDTO schedule) {
+        return schedule.getEndWeek() == null ? DEFAULT_END_WEEK : schedule.getEndWeek();
+    }
+
+    private int defaultStartWeek(CourseSchedule schedule) {
+        return schedule.getStartWeek() == null ? DEFAULT_START_WEEK : schedule.getStartWeek();
+    }
+
+    private int defaultEndWeek(CourseSchedule schedule) {
+        return schedule.getEndWeek() == null ? DEFAULT_END_WEEK : schedule.getEndWeek();
     }
 
     @Override

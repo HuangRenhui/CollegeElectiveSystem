@@ -55,6 +55,10 @@ public class CourseSchedule extends BaseEntity {
     @TableField(exist = false)
     private String courseName;
 
+    @Schema(description = "授课教师ID，仅在冲突校验的关联查询中填充")
+    @TableField(exist = false)
+    private Long teacherId;
+
     @Schema(description = "教师姓名")
     @TableField(exist = false)
     private String teacherName;

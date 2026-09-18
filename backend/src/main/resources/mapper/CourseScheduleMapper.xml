@@ -63,6 +63,37 @@
         ORDER BY cs.day_of_week, cs.start_section
     </select>
 
+    <!--
+      批量查询可能冲突的排课：一次取回「同教师的排课」与「同批教室的排课」，
+      由上层在内存中做时段比对，避免逐条排课调用统计接口造成 N+1。
+      teacherId 为非数据库字段，此处显式映射以便上层按教师过滤。
+    -->
+    <select id="selectRelatedSchedules" resultType="com.college.elective.entity.CourseSchedule">
+        SELECT
+        <include refid="scheduleColumns"/>,
+        c.teacher_id AS teacherId
+        FROM course_schedule cs
+        LEFT JOIN course c ON c.id = cs.course_id AND c.deleted = 0
+        WHERE cs.deleted = 0
+        AND cs.semester_id = #{semesterId}
+        <if test="excludeCourseId != null">
+            AND cs.course_id != #{excludeCourseId}
+        </if>
+        AND (
+        <trim prefixOverrides="OR |AND ">
+            <if test="teacherId != null">
+                c.teacher_id = #{teacherId}
+            </if>
+            <if test="classroomIds != null and classroomIds.size() > 0">
+                OR cs.classroom_id IN
+                <foreach collection="classroomIds" item="roomId" open="(" separator="," close=")">
+                    #{roomId}
+                </foreach>
+            </if>
+        </trim>
+        )
+    </select>
+
     <select id="countTeacherConflict" resultType="int">
         SELECT COUNT(*)
         FROM course_schedule cs
