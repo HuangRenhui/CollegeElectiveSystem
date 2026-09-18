@@ -26,7 +26,7 @@
         SELECT
         <include refid="scheduleColumns"/>,
         c.course_name AS courseName,
-        c.course_code AS courseName,
+        c.course_code AS courseCode,
         tu.real_name AS teacherName,
         cr.room_no AS roomNo,
         cr.building AS building
@@ -40,14 +40,16 @@
         <foreach collection="courseIds" item="id" open="(" separator="," close=")">
             #{id}
         </foreach>
+        <if test="semesterId != null">
+            AND cs.semester_id = #{semesterId}
+        </if>
         ORDER BY cs.day_of_week, cs.start_section
     </select>
 
     <select id="selectByStudentSelection" resultType="com.college.elective.entity.CourseSchedule">
         SELECT
         <include refid="scheduleColumns"/>,
-        c.id AS course_id,
-        c.course_code AS courseName,
+        c.course_code AS courseCode,
         c.course_name AS courseName
         FROM course_schedule cs
         INNER JOIN course_selection sel
@@ -58,6 +60,7 @@
         INNER JOIN course c ON c.id = cs.course_id AND c.deleted = 0
         WHERE cs.deleted = 0
         AND cs.semester_id = #{semesterId}
+        ORDER BY cs.day_of_week, cs.start_section
     </select>
 
     <select id="countTeacherConflict" resultType="int">

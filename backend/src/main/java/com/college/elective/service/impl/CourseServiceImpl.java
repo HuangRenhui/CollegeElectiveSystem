@@ -41,9 +41,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -65,6 +68,10 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     private final DepartmentMapper departmentMapper;
     private final StringRedisTemplate stringRedisTemplate;
 
+    private static final Map<Integer, String> DAY_TEXTS = Map.of(
+        1, "周一", 2, "周二", 3, "周三", 4, "周四",
+        5, "周五", 6, "周六", 7, "周日");
+
     @Override
     public PageResult<Course> pageCourses(CourseQueryDTO query) {
         IPage<Course> page = baseMapper.selectCoursePage(new Page<>(query.getPageNum(), query.getPageSize()), query);
@@ -74,22 +81,74 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     /**
      * 用 Redis 实时余量覆盖数据库记录，保证展示与选课结果一致。
+     *
+     * <p><b>为什么需要这个方法</b></p>
+     * <p>课程的剩余容量（{@code remainingCapacity}）是选课业务中的高频读取字段，
+     * 但在数据库里它并非独立字段，而是由 {@code 最大容量 - 已选人数} 推算得出。
+     * 若每次查询都依赖数据库的 {@code selected_count}，会有两个问题：</p>
+     * <ul>
+     *   <li><b>数据延迟</b>：选课高峰期 {@code selected_count} 采用异步或批量回写，
+     *       数据库中的值可能滞后于真实情况，导致学生看到「还有名额」但提交时被拒；</li>
+     *   <li><b>写入压力</b>：若改为每次选课都实时更新数据库，会对课程表产生大量行锁竞争。</li>
+     * </ul>
+     * <p>因此系统采用「<b>Redis 承载实时余量、数据库作为持久化底账</b>」的方案。
+     * 本方法的作用就是在返回课程数据前，将 Redis 中的权威余量回填到实体上，
+     * 使前端展示的余量与选课接口的判定结果保持一致。</p>
+     *
+     * <p><b>取值策略（Redis 优先，数据库兜底）</b></p>
+     * <ol>
+     *   <li>Redis 中存在 {@code elective:course:capacity:{courseId}} → 以其为准。
+     *       该值由选课/退课的 Lua 脚本原子维护，是当前最精确的余量；</li>
+     *   <li>Redis 中不存在该 Key → 说明缓存尚未预热（如服务刚启动、
+     *       课程为新建、或缓存被淘汰），此时退化为
+     *       {@code maxCapacity - selectedCount} 的数据库推算值，并用
+     *       {@code Math.max(..., 0)} 兜底，避免出现负余量。</li>
+     * </ol>
+     *
+     * <p><b>性能考量</b></p>
+     * <p>本方法在分页查询与详情查询中都会被调用，属于请求链路的关键路径，
+     * 因此刻意做了两点优化：</p>
+     * <ul>
+     *   <li>使用 {@code multiGet} 一次批量拉取全部课程的余量，
+     *       将 N 次 Redis 往返合并为 1 次，避免循环内单次读取造成的网络开销；</li>
+     *   <li>不逐条校验 Key 是否存在（避免 {@code hasKey} + {@code get} 的两次往返），
+     *       直接依据 {@code multiGet} 返回的 {@code null} 判定缺失。</li>
+     * </ul>
+     * <p>注意：{@code multiGet} 返回的列表顺序与传入的 Key 顺序严格对应，
+     * 但列表本身可能为 {@code null}（Redis 无返回时），故下方做了空值保护。</p>
+     *
+     * <p><b>调用场景</b></p>
+     * <ul>
+     *   <li>{@link #pageCourses} —— 课程列表分页，逐条回填；</li>
+     *   <li>{@link #getCourseDetail} —— 课程详情，单条回填。</li>
+     * </ul>
+     *
+     * @param courses 待回填余量的课程列表，允许为 {@code null} 或空集合
      */
     private void fillRemainingCapacity(List<Course> courses) {
+        // 空集合直接返回，避免后续无意义的 Redis 请求
         if (courses == null || courses.isEmpty()) {
             return;
         }
+
+        // 批量构造 Redis Key，保持与 courses 的索引一一对应
         List<String> keys = courses.stream()
                 .map(c -> RedisKeys.COURSE_CAPACITY + c.getId())
                 .collect(Collectors.toList());
+
+        // 一次请求取回全部余量，返回列表的索引与 keys 严格对应
         List<String> values = stringRedisTemplate.opsForValue().multiGet(keys);
 
         for (int i = 0; i < courses.size(); i++) {
             Course course = courses.get(i);
+            // multiGet 可能整体返回 null，需先判空再按下标取值
             String value = values == null ? null : values.get(i);
+
             if (value != null) {
+                // 命中缓存：以 Redis 中的实时余量为准
                 course.setRemainingCapacity(Integer.parseInt(value));
             } else {
+                // 未命中缓存：退化为数据库推算值，并保证余量不为负数
                 int selected = course.getSelectedCount() == null ? 0 : course.getSelectedCount();
                 course.setRemainingCapacity(Math.max(course.getMaxCapacity() - selected, 0));
             }
@@ -111,19 +170,23 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         if (schedules == null || schedules.isEmpty()) {
             return "暂无排课";
         }
-        String[] dayTexts = {"", "周一", "周二", "周三", "周四", "周五", "周六", "周日"};
+       //周一 第1-2节 A栋101；周三 第3-4节 B栋205
         return schedules.stream()
                 .map(s -> String.format("%s 第%d-%d节 %s",
-                        dayTexts[s.getDayOfWeek()],
-                        s.getStartSection(),
-                        s.getEndSection(),
-                        StrUtil.blankToDefault(s.getBuilding(), "") + StrUtil.blankToDefault(s.getRoomNo(), "")))
+                        DAY_TEXTS.getOrDefault(s.getDayOfWeek(), "待定"),// 周一
+                        s.getStartSection(),// 1
+                        s.getEndSection(),// 2
+                        StrUtil.blankToDefault(s.getBuilding(), "") + StrUtil.blankToDefault(s.getRoomNo(), "")))// A栋101
                 .collect(Collectors.joining("；"));
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createCourse(CourseDTO dto) {
+        // 学期为必填项：课程归属学期是排课、选课与统计的关联依据。
+        // 此处显式校验，避免依赖 DTO 上的注解校验被绕过时创建出无学期的课程
+        BusinessException.throwIf(dto.getSemesterId() == null, ResultCode.PARAM_ERROR, "所属学期不能为空");
+
         validateCourseCodeUnique(dto.getCourseCode(), dto.getSemesterId(), null);
         validateScheduleConflict(dto);
 
@@ -153,7 +216,10 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         Course exist = getById(dto.getId());
         BusinessException.throwIf(exist == null, ResultCode.COURSE_NOT_FOUND);
 
-        validateCourseCodeUnique(dto.getCourseCode(), dto.getSemesterId(), dto.getId());
+        // 未传学期时沿用库中记录，保证唯一性校验与后续写入使用同一学期
+        Long semesterId = dto.getSemesterId() != null ? dto.getSemesterId() : exist.getSemesterId();
+
+        validateCourseCodeUnique(dto.getCourseCode(), semesterId, dto.getId());
         validateScheduleConflict(dto);
 
         // 容量不允许小于已选人数
@@ -173,11 +239,12 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         course.setSelectedCount((int) selected);
         updateById(course);
 
-        // 重建排课
+        // 重建排课：排课依赖 semester_id 关联学期，若写入 null，
+        // 将导致按学期查询课表时丢失该课程的排课，故统一使用上方解析出的学期
         if (dto.getSchedules() != null) {
             scheduleMapper.delete(Wrappers.<CourseSchedule>lambdaQuery()
                     .eq(CourseSchedule::getCourseId, dto.getId()));
-            saveSchedules(dto.getId(), dto.getSemesterId(), dto.getSchedules());
+            saveSchedules(dto.getId(), semesterId, dto.getSchedules());
         }
 
         // 容量变化时更新 Redis 余量
@@ -188,10 +255,23 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         log.info("修改课程成功: id={}, {}", dto.getId(), dto.getCourseName());
     }
 
+    /**
+     * 将 DTO 中的字段复制到课程实体。
+     *
+     * <p>{@code semesterId} 仅在 DTO 显式传入时覆盖：学期是排课、选课与统计的关联依据，
+     * 若被置为 {@code null}，会导致按学期查询时该课程及其排课整体消失。
+     * 此处的处理方式与 {@code selectable}、{@code status} 保持一致，
+     * 未传的字段一律保留原值。</p>
+     *
+     * @param dto    课程请求参数
+     * @param course 待写入的课程实体，新增时为空对象，修改时为待更新对象
+     */
     private void copyProperties(CourseDTO dto, Course course) {
         course.setCourseCode(dto.getCourseCode());
         course.setCourseName(dto.getCourseName());
-        course.setSemesterId(dto.getSemesterId());
+        if (dto.getSemesterId() != null) {
+            course.setSemesterId(dto.getSemesterId());
+        }
         course.setDeptId(dto.getDeptId());
         course.setTeacherId(dto.getTeacherId());
         course.setCredit(dto.getCredit());
@@ -387,13 +467,17 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         Map<Long, CourseSelection> selectionMap = selections.stream()
                 .collect(Collectors.toMap(CourseSelection::getCourseId, Function.identity(), (a, b) -> a));
         List<Long> courseIds = new ArrayList<>(selectionMap.keySet());
+        List<CourseSchedule> schedules = scheduleMapper.selectByCourseIds(courseIds, effectiveSemester);
 
-        List<CourseSchedule> schedules = scheduleMapper.selectByCourseIds(courseIds);
+        // 课程与教师姓名一次性查出，避免在循环内逐条查询造成 N+1
+        Map<Long, Course> courseMap = loadCourses(courseIds);
+        Map<Long, String> teacherNameMap = loadTeacherNames(courseMap.values());
+
         List<TimetableVO> result = new ArrayList<>(schedules.size());
         for (CourseSchedule schedule : schedules) {
-            CourseSelection selection = selectionMap.get(schedule.getCourseId());
-            Course course = baseMapper.selectById(schedule.getCourseId());
-            result.add(toTimetableVO(schedule, course, selection));
+            Course course = courseMap.get(schedule.getCourseId());
+            result.add(toTimetableVO(schedule, course, selectionMap.get(schedule.getCourseId()),
+                    resolveTeacherName(course, teacherNameMap)));
         }
         return result;
     }
@@ -413,16 +497,92 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
         Map<Long, Course> courseMap = courses.stream()
                 .collect(Collectors.toMap(Course::getId, Function.identity(), (a, b) -> a));
-        List<CourseSchedule> schedules = scheduleMapper.selectByCourseIds(new ArrayList<>(courseMap.keySet()));
+        List<CourseSchedule> schedules = scheduleMapper.selectByCourseIds(
+                new ArrayList<>(courseMap.keySet()), effectiveSemester);
+        Map<Long, String> teacherNameMap = loadTeacherNames(courseMap.values());
 
         List<TimetableVO> result = new ArrayList<>(schedules.size());
         for (CourseSchedule schedule : schedules) {
-            result.add(toTimetableVO(schedule, courseMap.get(schedule.getCourseId()), null));
+            Course course = courseMap.get(schedule.getCourseId());
+            result.add(toTimetableVO(schedule, course, null, resolveTeacherName(course, teacherNameMap)));
         }
         return result;
     }
 
-    private TimetableVO toTimetableVO(CourseSchedule schedule, Course course, CourseSelection selection) {
+    /**
+     * 批量查询课程，返回 课程ID → 课程 的映射。
+     *
+     * @param courseIds 课程ID列表
+     * @return 课程映射；入参为空时返回空 Map
+     */
+    private Map<Long, Course> loadCourses(Collection<Long> courseIds) {
+        if (courseIds == null || courseIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return baseMapper.selectBatchIds(courseIds).stream()
+                .collect(Collectors.toMap(Course::getId, Function.identity(), (a, b) -> a));
+    }
+
+    /**
+     * 批量查询教师姓名，返回 教师ID → 姓名 的映射。
+     *
+     * <p>课程的 {@code teacher_name} 为冗余字段，正常写入时应已填充。
+     * 此处仅针对冗余字段为空的课程做一次兜底查询：先一次性取出涉及的教师，
+     * 再一次性取出对应用户，避免在课表循环中逐条查询（N+1）。</p>
+     *
+     * @param courses 课程集合
+     * @return 教师ID → 教师姓名 的映射；无需兜底时返回空 Map
+     */
+    private Map<Long, String> loadTeacherNames(Collection<Course> courses) {
+        Set<Long> teacherIds = courses.stream()
+                .filter(c -> StrUtil.isBlank(c.getTeacherName()) && c.getTeacherId() != null)
+                .map(Course::getTeacherId)
+                .collect(Collectors.toSet());
+        if (teacherIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        List<Teacher> teachers = teacherMapper.selectBatchIds(teacherIds);
+        if (teachers.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Set<Long> userIds = teachers.stream()
+                .map(Teacher::getUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (userIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        // 一次性查出所有教师对应的用户，再按 教师ID → 姓名 组装
+        Map<Long, String> userNameMap = userMapper.selectBatchIds(userIds).stream()
+                .filter(u -> u.getRealName() != null)
+                .collect(Collectors.toMap(SysUser::getId, SysUser::getRealName, (a, b) -> a));
+        return teachers.stream()
+                .filter(t -> userNameMap.containsKey(t.getUserId()))
+                .collect(Collectors.toMap(Teacher::getId, t -> userNameMap.get(t.getUserId()), (a, b) -> a));
+    }
+
+    /**
+     * 获取课程展示用的教师姓名，优先使用课程上的冗余字段，缺失时回退到兜底映射。
+     *
+     * @param course         课程，可为 {@code null}
+     * @param teacherNameMap 兜底教师姓名映射
+     * @return 教师姓名，均无法获取时返回 {@code null}
+     */
+    private String resolveTeacherName(Course course, Map<Long, String> teacherNameMap) {
+        if (course == null) {
+            return null;
+        }
+        if (StrUtil.isNotBlank(course.getTeacherName())) {
+            return course.getTeacherName();
+        }
+        return course.getTeacherId() == null ? null : teacherNameMap.get(course.getTeacherId());
+    }
+
+    private TimetableVO toTimetableVO(CourseSchedule schedule, Course course, CourseSelection selection,
+                                      String teacherName) {
         TimetableVO vo = new TimetableVO();
         vo.setCourseId(schedule.getCourseId());
         vo.setDayOfWeek(schedule.getDayOfWeek());
@@ -439,16 +599,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             vo.setCourseName(course.getCourseName());
             vo.setCourseCode(course.getCourseCode());
             vo.setCredit(course.getCredit());
-            vo.setTeacherName(course.getTeacherName());
-            if (vo.getTeacherName() == null && course.getTeacherId() != null) {
-                Teacher teacher = teacherMapper.selectById(course.getTeacherId());
-                if (teacher != null) {
-                    SysUser teacherUser = userMapper.selectById(teacher.getUserId());
-                    if (teacherUser != null) {
-                        vo.setTeacherName(teacherUser.getRealName());
-                    }
-                }
-            }
+            vo.setTeacherName(teacherName);
         }
         return vo;
     }

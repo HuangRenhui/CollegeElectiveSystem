@@ -20,8 +20,15 @@ public interface CourseScheduleMapper extends BaseMapper<CourseSchedule> {
 
     /**
      * 批量查询多门课程的排课明细（学生课表）。
+     *
+     * <p>同一课程ID若在不同学期存在排课记录，需传入 {@code semesterId} 精确限定，
+     * 否则会查出其他学期的排课。该参数可为 {@code null}，此时不加学期过滤。</p>
+     *
+     * @param courseIds  课程ID列表
+     * @param semesterId 学期ID，可为 {@code null}
      */
-    List<CourseSchedule> selectByCourseIds(@Param("courseIds") List<Long> courseIds);
+    List<CourseSchedule> selectByCourseIds(@Param("courseIds") List<Long> courseIds,
+                                           @Param("semesterId") Long semesterId);
 
     /**
      * 查询某学生在指定学期已选课程的排课明细（用于时间冲突检测）。
