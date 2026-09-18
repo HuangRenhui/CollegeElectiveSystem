@@ -6,7 +6,6 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -25,24 +24,24 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class JwtTokenProvider {
 
     private final ElectiveProperties properties;
     private final StringRedisTemplate stringRedisTemplate;
 
-    private volatile SecretKey cachedKey;
-
-    private SecretKey getKey() {
-        if (cachedKey == null) {
-            synchronized (this) {
-                if (cachedKey == null) {
-                    cachedKey = Keys.hmacShaKeyFor(
-                            properties.getJwt().getSecret().getBytes(StandardCharsets.UTF_8));
-                }
-            }
+    private final SecretKey secretKey;
+    //启动即失败：如果哪天有人误改了 elective.jwt.secret 配置，
+    // 服务会立刻启动失败并告诉你原因，而不是等到生产环境第一个用户登录时才发现
+    //（双重检测：登陆时有问题才爆发）
+    public JwtTokenProvider(ElectiveProperties properties, StringRedisTemplate redisTemplate) {
+        this.properties = properties;
+        this.stringRedisTemplate = redisTemplate;
+        byte[] secretBytes = properties.getJwt().getSecret().getBytes(StandardCharsets.UTF_8);
+        if (secretBytes.length < 32) {
+            throw new IllegalStateException(
+                "JWT 密钥长度不足 32 字节，当前为 " + secretBytes.length + " 字节，请在配置中调整 elective.jwt.secret");
         }
-        return cachedKey;
+        this.secretKey = Keys.hmacShaKeyFor(secretBytes);
     }
 
     /**
@@ -62,17 +61,17 @@ public class JwtTokenProvider {
         claims.put("role", role);
 
         String token = Jwts.builder()
-                .claims(claims)
-                .subject(String.valueOf(userId))
-                .issuer("college-elective-system")
-                .issuedAt(now)
-                .expiration(new Date(now.getTime() + expireSeconds * 1000))
-                .signWith(getKey())
-                .compact();
+            .claims(claims)
+            .subject(String.valueOf(userId))
+            .issuer("college-elective-system")
+            .issuedAt(now)
+            .expiration(new Date(now.getTime() + expireSeconds * 1000))
+            .signWith(secretKey)
+            .compact();
 
         // 写入 Redis，作为令牌白名单，支持服务端主动注销
         stringRedisTemplate.opsForValue().set(
-                RedisKeys.AUTH_TOKEN + userId, token, expireSeconds, TimeUnit.SECONDS);
+            RedisKeys.AUTH_TOKEN + userId, token, expireSeconds, TimeUnit.SECONDS);
         return token;
     }
 
@@ -82,11 +81,11 @@ public class JwtTokenProvider {
     public Claims parseToken(String token) {
         try {
             return Jwts.parser()
-                    .verifyWith(getKey())
-                    .requireIssuer("college-elective-system")
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
+                .verifyWith(secretKey)
+                .requireIssuer("college-elective-system")
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
         } catch (JwtException | IllegalArgumentException e) {
             log.debug("JWT 解析失败: {}", e.getMessage());
             return null;
@@ -111,7 +110,7 @@ public class JwtTokenProvider {
         }
         long remainingSeconds = (expiration.getTime() - System.currentTimeMillis()) / 1000;
         return remainingSeconds > 0
-                && remainingSeconds < properties.getJwt().getRefreshThresholdSeconds();
+            && remainingSeconds < properties.getJwt().getRefreshThresholdSeconds();
     }
 
     /**
@@ -120,7 +119,7 @@ public class JwtTokenProvider {
     public void refreshToken(Long userId, String token) {
         long expireSeconds = properties.getJwt().getExpireSeconds();
         stringRedisTemplate.opsForValue().set(
-                RedisKeys.AUTH_TOKEN + userId, token, expireSeconds, TimeUnit.SECONDS);
+            RedisKeys.AUTH_TOKEN + userId, token, expireSeconds, TimeUnit.SECONDS);
     }
 
     /**
