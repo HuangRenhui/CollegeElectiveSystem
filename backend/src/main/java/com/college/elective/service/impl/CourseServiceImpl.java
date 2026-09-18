@@ -30,6 +30,8 @@ import com.college.elective.mapper.SemesterMapper;
 import com.college.elective.mapper.StudentMapper;
 import com.college.elective.mapper.SysUserMapper;
 import com.college.elective.mapper.TeacherMapper;
+import com.college.elective.security.LoginUser;
+import com.college.elective.security.SecurityUtils;
 import com.college.elective.service.CourseService;
 import com.college.elective.vo.StatisticsVO;
 import com.college.elective.vo.TimetableVO;
@@ -596,11 +598,42 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         return scheduleMapper.selectByCourseId(courseId);
     }
 
+    /**
+     * 查询指定课程的选课记录（仅返回已选状态的记录）。
+     *
+     * <p>该接口为轻量级列表，仅返回选课记录本身，不含学生姓名等关联信息，
+     * 适用于需要课程学生ID集合的内部调用；如需展示名单请使用分页接口。</p>
+     *
+     * <p>访问权限：管理员不受限，教师仅能查询本人授课的课程。</p>
+     *
+     * @param courseId 课程ID
+     * @return 该课程的选课记录列表
+     */
     @Override
     public List<CourseSelection> listCourseStudents(Long courseId) {
+        Course course = getById(courseId);
+        BusinessException.throwIf(course == null, ResultCode.COURSE_NOT_FOUND);
+        checkCourseAccess(course);
         return selectionMapper.selectList(Wrappers.<CourseSelection>lambdaQuery()
                 .eq(CourseSelection::getCourseId, courseId)
                 .eq(CourseSelection::getStatus, Constants.SELECTION_SELECTED));
+    }
+
+    /**
+     * 校验当前用户是否有权访问指定课程的数据。
+     *
+     * <p>管理员不受限；教师仅能访问自己授课的课程，越权返回 403。</p>
+     *
+     * @param course 课程实体
+     */
+    private void checkCourseAccess(Course course) {
+        LoginUser loginUser = SecurityUtils.getLoginUser();
+        if (loginUser.isAdmin()) {
+            return;
+        }
+        BusinessException.throwIf(!loginUser.isTeacher()
+                        || !Objects.equals(course.getTeacherId(), loginUser.getTeacherId()),
+                ResultCode.ROLE_NOT_ALLOWED, "无权查看该课程的学生名单");
     }
 
     // ==================================================================

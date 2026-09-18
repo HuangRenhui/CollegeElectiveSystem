@@ -53,7 +53,17 @@ public interface CourseService extends IService<Course> {
     List<CourseSchedule> listSchedules(Long courseId);
 
     /**
-     * 查询课程的学生名单（用于成绩录入）。
+     * 查询指定课程的选课记录列表（仅含已选状态的记录）。
+     *
+     * <p>轻量级接口：只返回选课记录本身，不含学生姓名等关联信息，
+     * 适用于需要课程学生ID集合的场景；如需展示学生名单请使用
+     * {@link com.college.elective.service.CourseSelectionService#pageCourseStudents}。</p>
+     *
+     * <p>当前前端未调用该接口，保留供后续内部使用。访问权限为
+     * 管理员不受限、教师仅限本人授课课程。</p>
+     *
+     * @param courseId 课程ID
+     * @return 该课程的选课记录列表
      */
     List<CourseSelection> listCourseStudents(Long courseId);
 
