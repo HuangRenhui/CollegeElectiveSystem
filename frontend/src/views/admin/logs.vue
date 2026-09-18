@@ -10,7 +10,9 @@
       <el-button type="primary" @click="handleSearch">查询</el-button>
       <el-button @click="handleReset">重置</el-button>
       <div class="search-bar__spacer"></div>
-      <el-button type="danger" plain :icon="Delete" @click="handleClean">清理 90 天前日志</el-button>
+      <el-button type="danger" plain :icon="Delete" :loading="cleaning" @click="handleClean">
+        清理 90 天前日志
+      </el-button>
     </div>
 
     <el-card shadow="never">
@@ -98,6 +100,7 @@ import { pageLogs, cleanLogs } from '@/api/admin'
 defineOptions({ name: 'AdminLogs' })
 
 const loading = ref(false)
+const cleaning = ref(false)
 const detailVisible = ref(false)
 const list = ref([])
 const total = ref(0)
@@ -137,11 +140,20 @@ function openDetail(row) {
 }
 
 function handleClean() {
-  ElMessageBox.confirm('确定清理 90 天前的历史操作日志吗？该操作不可恢复。', '清理确认', { type: 'warning' })
+  ElMessageBox.confirm('确定清理 90 天前的历史操作日志吗？该操作不可恢复。', '清理确认', {
+    type: 'warning',
+    confirmButtonText: '确定清理'
+  })
     .then(async () => {
-      await cleanLogs(90)
-      ElMessage.success('日志清理任务已提交')
-      loadData()
+      // 清理为同步执行，数据量较大时可能需要等待，期间按钮保持加载态
+      cleaning.value = true
+      try {
+        await cleanLogs(90)
+        ElMessage.success('历史日志清理完成')
+        loadData()
+      } finally {
+        cleaning.value = false
+      }
     })
     .catch(() => {})
 }

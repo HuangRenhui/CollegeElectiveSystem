@@ -42,7 +42,7 @@ public class AdminUserController {
     @DeleteMapping("/logs")
     public Result<Void> cleanLogs(@RequestParam(defaultValue = "90") Integer days) {
         sysLogService.cleanExpiredLogs(days);
-        return Result.success("日志清理任务已提交", null);
+        return Result.success(days + " 天前的历史日志已清理完成", null);
     }
 
     @Operation(summary = "重置用户密码")

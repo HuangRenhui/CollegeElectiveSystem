@@ -22,5 +22,5 @@ public interface SysLogService extends IService<SysLog> {
     /**
      * 清空指定天数之前的历史日志。
      */
-    int cleanExpiredLogs(int days);
+    void cleanExpiredLogs(int days);
 }
