@@ -48,6 +48,9 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice> impleme
         int size = limit == null || limit <= 0 ? 10 : limit;
         return list(Wrappers.<Notice>lambdaQuery()
                 .eq(Notice::getStatus, 1)
+                // 注意：必须用 .and(w -> ...) 包裹，生成 (target_role = 'ALL' OR target_role = ?)
+                // 若去掉这层包裹，SQL 会变成 status = 1 AND ... OR ...，
+                // 因 AND 优先级高于 OR，草稿公告（status = 0）会被一并查出，造成越权泄露。
                 .and(w -> w.eq(Notice::getTargetRole, "ALL")
                         .or().eq(StrUtil.isNotBlank(role), Notice::getTargetRole, role))
                 .orderByDesc(Notice::getTopFlag)
