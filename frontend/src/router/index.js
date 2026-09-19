@@ -78,6 +78,12 @@ export const constantRoutes = [
         name: 'StudentGrades',
         component: () => import('@/views/student/grades.vue'),
         meta: { title: '我的成绩', icon: 'Trophy', roles: ['STUDENT'] }
+      },
+      {
+        path: 'reviews',
+        name: 'StudentReviews',
+        component: () => import('@/views/student/reviews.vue'),
+        meta: { title: '教学评价', icon: 'ChatDotSquare', roles: ['STUDENT'] }
       }
     ]
   },
@@ -99,6 +105,12 @@ export const constantRoutes = [
         name: 'TeacherTimetable',
         component: () => import('@/views/teacher/timetable.vue'),
         meta: { title: '教学课表', icon: 'Calendar', roles: ['TEACHER'] }
+      },
+      {
+        path: 'reviews',
+        name: 'TeacherReviews',
+        component: () => import('@/views/teacher/reviews.vue'),
+        meta: { title: '教学评价', icon: 'ChatDotSquare', roles: ['TEACHER'] }
       },
       {
         path: 'grades/:courseId',
@@ -168,6 +180,12 @@ export const constantRoutes = [
         name: 'AdminLogs',
         component: () => import('@/views/admin/logs.vue'),
         meta: { title: '操作日志', icon: 'Document', roles: ['ADMIN'] }
+      },
+      {
+        path: 'reviews',
+        name: 'AdminReviews',
+        component: () => import('@/views/admin/reviews.vue'),
+        meta: { title: '评价管理', icon: 'ChatDotSquare', roles: ['ADMIN'] }
       }
     ]
   },

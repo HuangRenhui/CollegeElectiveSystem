@@ -44,3 +44,40 @@ export function getMyGradeReport(params) {
 export function listMyGrades(params) {
   return request({ url: '/student/grades', method: 'get', params })
 }
+
+// ============================ 课程 / 教师评价 ============================
+
+/** 我的待评价课程（已修完且本学期未评价） */
+export function listPendingReviews(params) {
+  return request({ url: '/student/reviews/pending', method: 'get', params })
+}
+
+/** 提交课程评价（未公开前可修改） */
+export function submitReview(data) {
+  return request({ url: '/student/reviews', method: 'post', data })
+}
+
+/** 我的评价列表 */
+export function listMyReviews(params) {
+  return request({ url: '/student/reviews', method: 'get', params })
+}
+
+/** 查询我对某门课程的评价详情 */
+export function getMyReview(courseId) {
+  return request({ url: `/student/reviews/${courseId}`, method: 'get' })
+}
+
+/** 删除（撤回）我的评价 */
+export function deleteMyReview(id) {
+  return request({ url: `/student/reviews/${id}`, method: 'delete' })
+}
+
+/** 课程评价汇总（平均分、各维度得分、评价人数） */
+export function getCourseReviewSummary(courseId) {
+  return request({ url: `/student/courses/${courseId}/review-summary`, method: 'get' })
+}
+
+/** 课程公开评价列表（匿名） */
+export function listCourseReviews(courseId, params) {
+  return request({ url: `/student/courses/${courseId}/reviews`, method: 'get', params })
+}

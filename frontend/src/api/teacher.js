@@ -39,3 +39,15 @@ export function revokeGrades(courseId) {
 export function getMyTimetable(params) {
   return request({ url: '/teacher/timetable', method: 'get', params })
 }
+
+// ============================ 评价查看（只读） ============================
+
+/** 本人授课课程的评价汇总列表 */
+export function listMyReviewSummary(params) {
+  return request({ url: '/teacher/reviews/summary', method: 'get', params })
+}
+
+/** 指定课程的评价汇总与公开评价明细 */
+export function getCourseReviews(courseId) {
+  return request({ url: `/teacher/courses/${courseId}/reviews`, method: 'get' })
+}

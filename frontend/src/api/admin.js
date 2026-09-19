@@ -215,6 +215,32 @@ export function removeSelectionForStudent(studentId, courseId, reason) {
   })
 }
 
+// ============================ 评价管理（管理员） ============================
+
+/** 分页查询课程评价（支持学期 / 课程 / 状态筛选） */
+export function pageReviews(params) {
+  return request({ url: '/admin/reviews', method: 'get', params })
+}
+
+/** 变更评价公开状态（1-已公开 3-已隐藏） */
+export function updateReviewStatus(id, status, reason) {
+  return request({
+    url: `/admin/reviews/${id}/status/${status}`,
+    method: 'put',
+    params: { reason }
+  })
+}
+
+/** 删除违规评价 */
+export function deleteReview(id, reason) {
+  return request({ url: `/admin/reviews/${id}`, method: 'delete', params: { reason } })
+}
+
+/** 全校课程评价统计（平均分排行、参评率、状态分布） */
+export function getReviewStatistics(params) {
+  return request({ url: '/admin/reviews/statistics', method: 'get', params })
+}
+
 export function switchSelection(state) {
   return request({ url: `/admin/system/selection-switch/${state}`, method: 'put' })
 }

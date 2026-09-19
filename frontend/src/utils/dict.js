@@ -228,6 +228,63 @@ export function userStatusTag(value) {
   return USER_STATUS_MAP[value]?.type || 'info'
 }
 
+// ---------------------------- 评价状态 ----------------------------
+export const REVIEW_STATUS_MAP = {
+  0: { text: '草稿', type: 'info' },
+  1: { text: '已提交', type: 'warning' },
+  2: { text: '已公开', type: 'success' },
+  3: { text: '已隐藏', type: 'danger' }
+}
+
+export const REVIEW_STATUS_OPTIONS = Object.entries(REVIEW_STATUS_MAP).map(([value, item]) => ({
+  value: Number(value),
+  label: item.text
+}))
+
+export function reviewStatusText(value) {
+  return REVIEW_STATUS_MAP[value]?.text || '-'
+}
+
+export function reviewStatusTag(value) {
+  return REVIEW_STATUS_MAP[value]?.type || 'info'
+}
+
+// ---------------------------- 评价维度 ----------------------------
+/** 评价维度打分说明（5 分制） */
+export const REVIEW_DIMENSIONS = [
+  { key: 'scoreContent', label: '教学内容', tip: '内容充实、条理清晰、重点突出' },
+  { key: 'scoreTeaching', label: '教学方法', tip: '讲解透彻、案例丰富、启发性强' },
+  { key: 'scoreAttitude', label: '教学态度', tip: '认真负责、答疑及时、为人师表' },
+  { key: 'scoreGain', label: '学习收获', tip: '学有所获、能力提升明显' }
+]
+
+/** 综合评分取各维度的平均值（保留 1 位小数） */
+export function averageScore(review) {
+  const values = REVIEW_DIMENSIONS
+    .map((item) => Number(review?.[item.key]))
+    .filter((value) => !Number.isNaN(value) && value > 0)
+  if (!values.length) return 0
+  return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1))
+}
+
+/** 评分对应的标签颜色 */
+export function scoreTagType(score) {
+  const value = Number(score)
+  if (value >= 4.5) return 'success'
+  if (value >= 3.5) return 'primary'
+  if (value >= 2.5) return 'warning'
+  return 'danger'
+}
+
+/** 匿名展示名：张*远 */
+export function maskName(name) {
+  if (!name) return '匿名同学'
+  const chars = String(name)
+  if (chars.length <= 1) return `${chars}*`
+  if (chars.length === 2) return `${chars[0]}*`
+  return `${chars[0]}${'*'.repeat(chars.length - 2)}${chars[chars.length - 1]}`
+}
+
 // ---------------------------- 周次类型 ----------------------------
 export const WEEK_TYPE_MAP = { ALL: '每周', ODD: '单周', EVEN: '双周' }
 
