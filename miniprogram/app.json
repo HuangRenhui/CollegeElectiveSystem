@@ -1,0 +1,46 @@
+{
+  "pages": [
+    "pages/login/index",
+    "pages/review/list/index",
+    "pages/review/form/index",
+    "pages/review/mine/index",
+    "pages/review/detail/index",
+    "pages/timetable/index",
+    "pages/grade/index",
+    "pages/mine/index"
+  ],
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#409eff",
+    "navigationBarTitleText": "选课助手",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f5f7fa"
+  },
+  "tabBar": {
+    "color": "#909399",
+    "selectedColor": "#409eff",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/review/list/index",
+        "text": "待评价"
+      },
+      {
+        "pagePath": "pages/timetable/index",
+        "text": "课表"
+      },
+      {
+        "pagePath": "pages/grade/index",
+        "text": "成绩"
+      },
+      {
+        "pagePath": "pages/mine/index",
+        "text": "我的"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}
