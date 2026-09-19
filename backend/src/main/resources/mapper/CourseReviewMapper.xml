@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.college.elective.mapper.CourseReviewMapper">
+
+    <!-- 评价基础列（含课程、教师、学期、学生信息） -->
+    <sql id="reviewColumns">
+        r.id, r.selection_id, r.student_id, r.course_id, r.teacher_id, r.semester_id,
+        r.score_content, r.score_teaching, r.score_attitude, r.score_gain, r.average_score,
+        r.content, r.anonymous, r.status, r.submit_time, r.create_time, r.update_time,
+        su.real_name AS studentName,
+        st.stu_no AS stuNo,
+        c.course_code AS courseCode,
+        c.course_name AS courseName,
+        tu.real_name AS teacherName,
+        se.semester_name AS semesterName
+    </sql>
+
+    <sql id="reviewJoins">
+        LEFT JOIN student st ON st.id = r.student_id AND st.deleted = 0
+        LEFT JOIN sys_user su ON su.id = st.user_id AND su.deleted = 0
+        LEFT JOIN course c ON c.id = r.course_id AND c.deleted = 0
+        LEFT JOIN teacher t ON t.id = r.teacher_id AND t.deleted = 0
+        LEFT JOIN sys_user tu ON tu.id = t.user_id AND tu.deleted = 0
+        LEFT JOIN semester se ON se.id = r.semester_id AND se.deleted = 0
+    </sql>
+
+    <!--
+      待评价课程：以「已修完的选课记录」为主表左联评价表，
+      评价记录不存在（含已撤回/已删除）的即为待评价。
+    -->
+    <select id="selectPendingReviews" resultType="com.college.elective.vo.PendingReviewVO">
+        SELECT sel.id AS selectionId,
+        sel.course_id AS courseId,
+        c.course_code AS courseCode,
+        c.course_name AS courseName,
+        tu.real_name AS teacherName,
+        c.credit AS credit,
+        se.semester_name AS semesterName,
+        sel.score AS totalScore
+        FROM course_selection sel
+        INNER JOIN course c ON c.id = sel.course_id AND c.deleted = 0
+        LEFT JOIN teacher t ON t.id = c.teacher_id AND t.deleted = 0
+        LEFT JOIN sys_user tu ON tu.id = t.user_id AND tu.deleted = 0
+        LEFT JOIN semester se ON se.id = sel.semester_id AND se.deleted = 0
+        LEFT JOIN course_review r ON r.selection_id = sel.id
+        WHERE sel.deleted = 0
+        AND sel.student_id = #{studentId}
+        AND sel.status = 2
+        AND r.id IS NULL
+        <if test="semesterId != null">
+            AND sel.semester_id = #{semesterId}
+        </if>
+        ORDER BY sel.semester_id DESC, sel.id DESC
+    </select>
+
+    <select id="selectStudentReviews" resultType="com.college.elective.entity.CourseReview">
+        SELECT
+        <include refid="reviewColumns"/>
+        FROM course_review r
+        <include refid="reviewJoins"/>
+        WHERE r.student_id = #{studentId}
+        <if test="semesterId != null">
+            AND r.semester_id = #{semesterId}
+        </if>
+        ORDER BY r.submit_time DESC, r.id DESC
+    </select>
+
+    <!--
+      教师评价汇总：仅统计「已公开」评价（status = 2），
+      studentCount 取该课程已修完人数作为参评率分母。
+      课程列表取自教师授课课程，无评价的课程也需出现在列表中。
+    -->
+    <select id="selectTeacherReviewSummary" resultType="com.college.elective.vo.CourseReviewSummaryVO">
+        SELECT c.id AS courseId,
+        c.course_code AS courseCode,
+        c.course_name AS courseName,
+        tu.real_name AS teacherName,
+        se.semester_name AS semesterName,
+        IFNULL(ROUND(AVG(CASE WHEN r.status = 2 THEN r.average_score END), 1), 0) AS averageScore,
+        IFNULL(ROUND(AVG(CASE WHEN r.status = 2 THEN r.score_content END), 1), 0) AS scoreContent,
+        IFNULL(ROUND(AVG(CASE WHEN r.status = 2 THEN r.score_teaching END), 1), 0) AS scoreTeaching,
+        IFNULL(ROUND(AVG(CASE WHEN r.status = 2 THEN r.score_attitude END), 1), 0) AS scoreAttitude,
+        IFNULL(ROUND(AVG(CASE WHEN r.status = 2 THEN r.score_gain END), 1), 0) AS scoreGain,
+        SUM(CASE WHEN r.status = 2 THEN 1 ELSE 0 END) AS reviewCount,
+        (SELECT COUNT(*)
+        FROM course_selection sel
+        WHERE sel.course_id = c.id
+        AND sel.status = 2
+        AND sel.deleted = 0) AS studentCount
+        FROM course c
+        LEFT JOIN teacher t ON t.id = c.teacher_id AND t.deleted = 0
+        LEFT JOIN sys_user tu ON tu.id = t.user_id AND tu.deleted = 0
+        LEFT JOIN semester se ON se.id = c.semester_id AND se.deleted = 0
+        LEFT JOIN course_review r ON r.course_id = c.id
+        WHERE c.deleted = 0
+        AND c.teacher_id = #{teacherId}
+        <if test="semesterId != null">
+            AND c.semester_id = #{semesterId}
+        </if>
+        GROUP BY c.id, c.course_code, c.course_name, tu.real_name, se.semester_name
+        ORDER BY c.semester_id DESC, c.id DESC
+    </select>
+
+    <select id="selectReviewPage" resultType="com.college.elective.entity.CourseReview">
+        SELECT
+        <include refid="reviewColumns"/>
+        FROM course_review r
+        <include refid="reviewJoins"/>
+        WHERE 1 = 1
+        <if test="query.courseId != null">
+            AND r.course_id = #{query.courseId}
+        </if>
+        <if test="query.teacherId != null">
+            AND r.teacher_id = #{query.teacherId}
+        </if>
+        <if test="query.semesterId != null">
+            AND r.semester_id = #{query.semesterId}
+        </if>
+        <if test="query.status != null">
+            AND r.status = #{query.status}
+        </if>
+        <if test="query.keyword != null and query.keyword != ''">
+            AND (c.course_name LIKE CONCAT('%', #{query.keyword}, '%')
+            OR c.course_code LIKE CONCAT('%', #{query.keyword}, '%')
+            OR tu.real_name LIKE CONCAT('%', #{query.keyword}, '%'))
+        </if>
+        <!-- 评分档位：与前端 SCORE_LEVEL_OPTIONS 保持一致 -->
+        <if test="query.scoreLevel == 'high'">
+            AND r.average_score &gt;= 4.5
+        </if>
+        <if test="query.scoreLevel == 'good'">
+            AND r.average_score &gt;= 3.5 AND r.average_score &lt; 4.5
+        </if>
+        <if test="query.scoreLevel == 'normal'">
+            AND r.average_score &gt;= 2.5 AND r.average_score &lt; 3.5
+        </if>
+        <if test="query.scoreLevel == 'low'">
+            AND r.average_score &lt; 2.5
+        </if>
+        ORDER BY r.submit_time DESC, r.id DESC
+    </select>
+
+    <!-- 课程汇总：学生端课程卡片与教师端明细弹窗共用 -->
+    <select id="selectCourseReviewSummary" resultType="com.college.elective.vo.CourseReviewSummaryVO">
+        SELECT c.id AS courseId,
+        c.course_code AS courseCode,
+        c.course_name AS courseName,
+        tu.real_name AS teacherName,
+        se.semester_name AS semesterName,
+        IFNULL(ROUND(AVG(CASE WHEN r.status &lt;&gt; 3 THEN r.average_score END), 1), 0) AS averageScore,
+        IFNULL(ROUND(AVG(CASE WHEN r.status &lt;&gt; 3 THEN r.score_content END), 1), 0) AS scoreContent,
+        IFNULL(ROUND(AVG(CASE WHEN r.status &lt;&gt; 3 THEN r.score_teaching END), 1), 0) AS scoreTeaching,
+        IFNULL(ROUND(AVG(CASE WHEN r.status &lt;&gt; 3 THEN r.score_attitude END), 1), 0) AS scoreAttitude,
+        IFNULL(ROUND(AVG(CASE WHEN r.status &lt;&gt; 3 THEN r.score_gain END), 1), 0) AS scoreGain,
+        SUM(CASE WHEN r.status &lt;&gt; 3 THEN 1 ELSE 0 END) AS reviewCount,
+        (SELECT COUNT(*)
+        FROM course_selection sel
+        WHERE sel.course_id = c.id
+        AND sel.status = 2
+        AND sel.deleted = 0) AS studentCount
+        FROM course c
+        LEFT JOIN teacher t ON t.id = c.teacher_id AND t.deleted = 0
+        LEFT JOIN sys_user tu ON tu.id = t.user_id AND tu.deleted = 0
+        LEFT JOIN semester se ON se.id = c.semester_id AND se.deleted = 0
+        LEFT JOIN course_review r ON r.course_id = c.id
+        WHERE c.deleted = 0
+        AND c.id = #{courseId}
+        GROUP BY c.id, c.course_code, c.course_name, tu.real_name, se.semester_name
+    </select>
+
+    <select id="selectCoursePublishedReviews" resultType="com.college.elective.entity.CourseReview">
+        SELECT
+        <include refid="reviewColumns"/>
+        FROM course_review r
+        <include refid="reviewJoins"/>
+        WHERE r.deleted = 0
+        AND r.course_id = #{courseId}
+        AND r.status = 2
+        ORDER BY r.average_score DESC, r.submit_time DESC
+    </select>
+
+    <select id="selectStatistics" resultType="com.college.elective.vo.ReviewStatisticsVO">
+        SELECT COUNT(CASE WHEN r.status &lt;&gt; 3 THEN 1 END) AS reviewCount,
+        COUNT(CASE WHEN r.status = 2 THEN 1 END) AS publishedCount,
+        COUNT(CASE WHEN r.status = 3 THEN 1 END) AS hiddenCount,
+        IFNULL(ROUND(AVG(CASE WHEN r.status &lt;&gt; 3 THEN r.average_score END), 1), 0) AS averageScore,
+        COUNT(DISTINCT CASE WHEN r.status &lt;&gt; 3 THEN r.course_id END) AS courseCount
+        FROM course_review r
+        WHERE r.deleted = 0
+        <if test="semesterId != null">
+            AND r.semester_id = #{semesterId}
+        </if>
+    </select>
+
+    <select id="countFinishedStudents" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM course_selection
+        WHERE deleted = 0
+        AND status = 2
+        AND course_id = #{courseId}
+    </select>
+
+    <select id="countBySelectionId" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM course_review
+        WHERE deleted = 0
+        AND selection_id = #{selectionId}
+    </select>
+
+</mapper>
