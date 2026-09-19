@@ -32,6 +32,13 @@ pnpm-debug.log*
 .pnpm-store/
 stats.html
 
+# ---------------- 微信小程序 ----------------
+miniprogram/node_modules/
+# 开发者工具的本地私有配置（含个人偏好，不应提交）
+miniprogram/project.private.config.json
+miniprogram/.miniprogram/
+miniprogram/miniprogram_npm/
+
 # ---------------- 运行与上传目录 ----------------
 logs/
 upload/
