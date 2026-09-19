@@ -1,0 +1,108 @@
+<view class="page-container">
+  <view wx:if="{{loading}}" class="empty">加载中...</view>
+
+  <block wx:else>
+    <!-- 课程信息 -->
+    <view class="card course">
+      <view class="course__name">{{courseName}}</view>
+      <view class="course__meta text-muted">
+        <text>{{courseCode || '-'}}</text>
+        <text class="dot">·</text>
+        <text>{{teacherName || '待定'}}</text>
+      </view>
+    </view>
+
+    <!-- 隐藏提示 -->
+    <view wx:if="{{hidden}}" class="alert alert--danger">
+      该评价已被管理员隐藏，暂时无法修改
+    </view>
+
+    <!-- 四维评分 -->
+    <view class="card">
+      <view class="section-title">评分（支持半星）</view>
+
+      <view class="rate-row" wx:for="{{dimensions}}" wx:key="key">
+        <view class="rate-row__label">
+          <view class="rate-row__name">{{item.label}}</view>
+          <view class="rate-row__tip">{{item.tip}}</view>
+        </view>
+
+        <view class="rate">
+          <view
+            wx:for="{{item.stars}}"
+            wx:for-item="star"
+            wx:key="index"
+            id="rate-{{item.key}}-{{star.index}}"
+            class="rate__star rate__star--{{star.state}}"
+            data-key="{{item.key}}"
+            data-index="{{star.index}}"
+            catchtap="onRate"
+          >★</view>
+          <text class="rate__value">{{item.score ? item.score : ''}}</text>
+        </view>
+      </view>
+
+      <view class="overall">
+        <text class="overall__label">综合评分</text>
+        <text class="overall__score">{{overallScore}}</text>
+        <text class="overall__unit">分</text>
+        <text class="overall__hint">由四项自动计算</text>
+      </view>
+    </view>
+
+    <!-- 文字评价 -->
+    <view class="card">
+      <view class="section-title">
+        文字评价
+        <text class="section-title__hint">（5-500 字）</text>
+      </view>
+
+      <textarea
+        class="textarea"
+        value="{{content}}"
+        placeholder="可从教学内容、方法、态度与收获等方面填写"
+        placeholder-class="textarea__placeholder"
+        maxlength="{{maxLength}}"
+        bindinput="onContentInput"
+      />
+
+      <view class="counter">{{content.length}} / {{maxLength}}</view>
+
+      <view class="section-title section-title--sub">快捷标签（点击添加）</view>
+      <view class="tags">
+        <view
+          wx:for="{{quickTags}}"
+          wx:key="*this"
+          class="tags__item {{selectedTags.indexOf(item) > -1 ? 'tags__item--active' : ''}}"
+          data-tag="{{item}}"
+          bindtap="toggleTag"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <!-- 匿名设置 -->
+    <view class="card">
+      <view class="switch-row">
+        <view>
+          <view class="switch-row__label">匿名提交</view>
+          <view class="switch-row__tip">开启后，教师与同学看到的评价将隐藏你的姓名</view>
+        </view>
+        <switch
+          checked="{{anonymous}}"
+          color="#409eff"
+          bindchange="onAnonymousChange"
+        />
+      </view>
+    </view>
+
+    <!-- 提交 -->
+    <view
+      class="btn btn--primary submit-btn {{submitting || hidden ? 'btn--disabled' : ''}}"
+      bindtap="handleSubmit"
+    >
+      {{submitting ? '提交中...' : '提交评价'}}
+    </view>
+
+    <view class="link-btn" bindtap="goDetail">查看该课程已有评价</view>
+  </block>
+</view>

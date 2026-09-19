@@ -1,0 +1,42 @@
+<view class="page-container">
+  <!-- 用户信息 -->
+  <view class="profile">
+    <view class="profile__avatar">{{userInfo.realName ? userInfo.realName[0] : '学'}}</view>
+    <view class="profile__info">
+      <view class="profile__name">{{userInfo.realName || '未登录'}}</view>
+      <view class="profile__sub">{{userInfo.username || '-'}}</view>
+    </view>
+    <view class="tag tag--primary">学生</view>
+  </view>
+
+  <!-- 功能入口 -->
+  <view class="card menu">
+    <view class="menu__item" bindtap="goReviewPending">
+      <text class="menu__label">待评价课程</text>
+      <text class="menu__arrow">›</text>
+    </view>
+    <view class="menu__item" bindtap="goReviewMine">
+      <text class="menu__label">我的评价</text>
+      <text class="menu__arrow">›</text>
+    </view>
+    <view class="menu__item" bindtap="goTimetable">
+      <text class="menu__label">我的课表</text>
+      <text class="menu__arrow">›</text>
+    </view>
+    <view class="menu__item" bindtap="goGrade">
+      <text class="menu__label">我的成绩</text>
+      <text class="menu__arrow">›</text>
+    </view>
+  </view>
+
+  <!-- 说明 -->
+  <view class="card tip">
+    <view class="tip__title">关于小程序端</view>
+    <view class="tip__text">
+      当前小程序面向学生开放教学评价、课表查询与成绩查询。
+      完整教务管理请使用网页端。
+    </view>
+  </view>
+
+  <view class="btn btn--danger--plain logout" bindtap="handleLogout">退出登录</view>
+</view>

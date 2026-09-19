@@ -1,0 +1,129 @@
+.summary__name {
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.summary__meta {
+  margin-top: 10rpx;
+  font-size: 26rpx;
+}
+
+.dot {
+  margin: 0 10rpx;
+}
+
+.summary__overall {
+  display: flex;
+  align-items: center;
+  margin-top: 28rpx;
+  padding-bottom: 28rpx;
+  border-bottom: 1rpx solid var(--border-light);
+}
+
+.summary__score-wrap {
+  display: flex;
+  align-items: baseline;
+  margin-right: 32rpx;
+}
+
+.summary__score {
+  font-size: 72rpx;
+  font-weight: 700;
+  color: var(--warning);
+  line-height: 1;
+}
+
+.summary__score-unit {
+  margin-left: 8rpx;
+  font-size: 24rpx;
+  color: var(--warning);
+}
+
+.summary__stats {
+  font-size: 26rpx;
+  color: var(--text-regular);
+  line-height: 1.8;
+}
+
+/* ---------------------------- 维度得分条 ---------------------------- */
+.dim {
+  display: flex;
+  align-items: center;
+  margin-top: 24rpx;
+}
+
+.dim__label {
+  width: 140rpx;
+  font-size: 26rpx;
+  color: var(--text-regular);
+}
+
+.dim__bar {
+  flex: 1;
+  height: 14rpx;
+  margin: 0 20rpx;
+  background: #f0f2f5;
+  border-radius: 7rpx;
+  overflow: hidden;
+}
+
+.dim__bar-inner {
+  height: 100%;
+  background: linear-gradient(90deg, #f7ba2a 0%, #ffd666 100%);
+  border-radius: 7rpx;
+  transition: width 0.3s;
+}
+
+.dim__score {
+  width: 60rpx;
+  text-align: right;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--warning);
+}
+
+/* ---------------------------- 评价明细 ---------------------------- */
+.list-title {
+  margin: 12rpx 0 20rpx 8rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--text-regular);
+}
+
+.review__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.review__user {
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.review__score {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--warning);
+}
+
+.review__content {
+  margin-top: 16rpx;
+  font-size: 27rpx;
+  line-height: 1.7;
+  color: var(--text-regular);
+  word-break: break-all;
+}
+
+.review__time {
+  margin-top: 16rpx;
+  font-size: 22rpx;
+}
+
+.list-more {
+  padding: 32rpx 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--text-placeholder);
+}

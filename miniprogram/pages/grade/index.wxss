@@ -1,0 +1,112 @@
+.filter {
+  display: flex;
+  align-items: center;
+  height: 80rpx;
+  padding: 0 28rpx;
+  margin-bottom: 24rpx;
+  background: #fff;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+}
+
+.filter__label {
+  color: var(--text-secondary);
+  margin-right: 20rpx;
+}
+
+.filter__value {
+  flex: 1;
+}
+
+.filter__arrow {
+  color: var(--text-placeholder);
+}
+
+/* ---------------------------- 统计卡片 ---------------------------- */
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.stats__item {
+  width: 48%;
+  margin-bottom: 20rpx;
+  padding: 26rpx 20rpx;
+  text-align: center;
+}
+
+.stats__value {
+  font-size: 46rpx;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--primary);
+}
+
+.stats__value--success {
+  color: var(--success);
+}
+
+.stats__value--warning {
+  color: var(--warning);
+}
+
+.stats__label {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: var(--text-secondary);
+}
+
+/* ---------------------------- 成绩明细 ---------------------------- */
+.list-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12rpx 8rpx 20rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--text-regular);
+}
+
+.grade__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.grade__name {
+  flex: 1;
+  font-size: 31rpx;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-right: 20rpx;
+}
+
+.grade__total {
+  font-size: 46rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.grade__meta {
+  margin-top: 10rpx;
+  font-size: 25rpx;
+}
+
+.grade__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 22rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid var(--border-light);
+}
+
+.grade__detail {
+  font-size: 24rpx;
+  color: var(--text-regular);
+}
+
+.dot {
+  margin: 0 10rpx;
+}

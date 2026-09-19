@@ -1,0 +1,88 @@
+.filter {
+  display: flex;
+  align-items: center;
+  height: 80rpx;
+  padding: 0 28rpx;
+  margin-bottom: 20rpx;
+  background: #fff;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+}
+
+.filter__label {
+  color: var(--text-secondary);
+  margin-right: 20rpx;
+}
+
+.filter__value {
+  flex: 1;
+}
+
+.filter__arrow {
+  color: var(--text-placeholder);
+}
+
+.summary-bar {
+  padding: 0 8rpx 20rpx;
+  font-size: 26rpx;
+  color: var(--text-regular);
+}
+
+.summary-bar__num {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--primary);
+  margin: 0 6rpx;
+}
+
+/* ---------------------------- 按天分组 ---------------------------- */
+.day {
+  margin-bottom: 12rpx;
+}
+
+.day__label {
+  padding: 12rpx 8rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--text-regular);
+}
+
+.lesson {
+  border-left: 8rpx solid var(--primary);
+}
+
+.lesson__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.lesson__name {
+  flex: 1;
+  font-size: 31rpx;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-right: 16rpx;
+}
+
+.lesson__row {
+  display: flex;
+  align-items: center;
+  margin-top: 14rpx;
+  font-size: 26rpx;
+  color: var(--text-regular);
+}
+
+.lesson__time {
+  color: var(--primary);
+  font-weight: 600;
+  margin-right: 20rpx;
+}
+
+.lesson__location {
+  flex: 1;
+}
+
+.dot {
+  margin: 0 10rpx;
+}

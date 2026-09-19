@@ -1,0 +1,50 @@
+<view class="login">
+  <view class="login__header">
+    <view class="login__logo">选</view>
+    <view class="login__title">高校选修课管理系统</view>
+    <view class="login__subtitle">学生端 · 教学评价 / 课表 / 成绩</view>
+  </view>
+
+  <view class="login__form">
+    <view class="field">
+      <view class="field__label">账号</view>
+      <input
+        class="field__input"
+        type="text"
+        value="{{username}}"
+        placeholder="请输入学号"
+        placeholder-class="field__placeholder"
+        data-field="username"
+        bindinput="onInput"
+      />
+    </view>
+
+    <view class="field">
+      <view class="field__label">密码</view>
+      <input
+        class="field__input"
+        password
+        value="{{password}}"
+        placeholder="请输入密码"
+        placeholder-class="field__placeholder"
+        data-field="password"
+        bindinput="onInput"
+        bindconfirm="handleLogin"
+      />
+    </view>
+
+    <view
+      class="btn btn--primary login__submit {{loading ? 'btn--disabled' : ''}}"
+      bindtap="handleLogin"
+    >
+      {{loading ? '登录中...' : '登 录'}}
+    </view>
+
+    <view class="login__demo">
+      <view class="login__demo-title">演示账号（点击填充）</view>
+      <view class="login__demo-list">
+        <view class="login__demo-item" data-role="student" bindtap="fillDemo">学生</view>
+      </view>
+    </view>
+  </view>
+</view>

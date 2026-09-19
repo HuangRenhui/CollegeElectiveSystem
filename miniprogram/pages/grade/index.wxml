@@ -1,0 +1,76 @@
+<view class="page-container">
+  <picker
+    mode="selector"
+    range="{{semesters}}"
+    range-key="semesterName"
+    value="{{semesterIndex}}"
+    bindchange="onSemesterChange"
+  >
+    <view class="filter">
+      <text class="filter__label">学期</text>
+      <text class="filter__value">{{semesters[semesterIndex].semesterName || '全部学期'}}</text>
+      <text class="filter__arrow">▾</text>
+    </view>
+  </picker>
+
+  <!-- 统计概览 -->
+  <view class="stats">
+    <view class="stats__item card">
+      <view class="stats__value">{{report.totalCredit || 0}}</view>
+      <view class="stats__label">总学分</view>
+    </view>
+    <view class="stats__item card">
+      <view class="stats__value stats__value--success">{{report.earnedCredit || 0}}</view>
+      <view class="stats__label">已获学分</view>
+    </view>
+    <view class="stats__item card">
+      <view class="stats__value" style="color: {{scoreColorValue}}">{{report.averageScore || 0}}</view>
+      <view class="stats__label">平均成绩</view>
+    </view>
+    <view class="stats__item card">
+      <view class="stats__value stats__value--warning">{{report.averageGradePoint || 0}}</view>
+      <view class="stats__label">平均绩点</view>
+    </view>
+  </view>
+
+  <view class="list-title">
+    <text>成绩明细</text>
+    <text class="text-muted" wx:if="{{grades.length}}">共 {{grades.length}} 门</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty">加载中...</view>
+
+  <block wx:elif="{{grades.length > 0}}">
+    <view class="card grade" wx:for="{{grades}}" wx:key="courseCode">
+      <view class="grade__head">
+        <view class="grade__name">{{item.courseName}}</view>
+        <view class="grade__total" style="color: {{item.totalScoreColor}}">
+          {{item.totalScore === null || item.totalScore === undefined ? '-' : item.totalScore}}
+        </view>
+      </view>
+
+      <view class="grade__meta text-muted">
+        <text>{{item.courseCode || '-'}}</text>
+        <text class="dot">·</text>
+        <text>{{item.credit}} 学分</text>
+      </view>
+
+      <view class="grade__foot">
+        <view class="grade__detail">
+          <text>平时 {{item.usualScore === null || item.usualScore === undefined ? '-' : item.usualScore}}</text>
+          <text class="dot">·</text>
+          <text>期末 {{item.examScore === null || item.examScore === undefined ? '-' : item.examScore}}</text>
+          <text class="dot">·</text>
+          <text>绩点 {{item.gradePoint === null || item.gradePoint === undefined ? '-' : item.gradePoint}}</text>
+        </view>
+        <view class="tag tag--{{item.pass ? 'success' : 'danger'}}">{{item.passText}}</view>
+      </view>
+    </view>
+  </block>
+
+  <view wx:else class="empty">
+    <view class="empty__icon">📊</view>
+    <view>暂无已发布成绩</view>
+    <view class="text-muted">成绩需教师发布后才会展示</view>
+  </view>
+</view>

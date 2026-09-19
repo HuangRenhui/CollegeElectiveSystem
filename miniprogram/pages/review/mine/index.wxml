@@ -1,0 +1,52 @@
+<view class="page-container">
+  <view wx:if="{{loading}}" class="empty">加载中...</view>
+
+  <block wx:elif="{{list.length > 0}}">
+    <view class="card item" wx:for="{{list}}" wx:key="id">
+      <view class="item__head">
+        <view class="item__name">{{item.courseName}}</view>
+        <view class="tag tag--{{item.statusTheme}}">{{item.statusText}}</view>
+      </view>
+
+      <view class="item__meta text-muted">
+        <text>{{item.courseCode || '-'}}</text>
+        <text class="dot">·</text>
+        <text>{{item.teacherName || '待定'}}</text>
+      </view>
+
+      <view class="item__score">
+        <text class="item__score-label">综合评分</text>
+        <text class="item__score-value">{{item.averageScore}}</text>
+        <text class="item__score-unit">分</text>
+        <text class="item__anonymous text-muted">{{item.anonymous === 1 ? '匿名' : '实名'}}</text>
+      </view>
+
+      <view class="item__content">{{item.content || '（未填写文字评价）'}}</view>
+
+      <view class="item__foot">
+        <text class="text-muted">{{item.submitTime || '-'}}</text>
+        <view class="item__actions">
+          <view
+            class="item__action item__action--primary"
+            data-course-id="{{item.courseId}}"
+            data-course-name="{{item.courseName}}"
+            data-locked="{{item.locked}}"
+            bindtap="goEdit"
+          >修改</view>
+          <view
+            class="item__action item__action--danger"
+            data-id="{{item.id}}"
+            data-course-name="{{item.courseName}}"
+            bindtap="handleDelete"
+          >撤回</view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <view wx:else class="empty">
+    <view class="empty__icon">📝</view>
+    <view>还没有提交过评价</view>
+    <view class="empty__link" bindtap="goPending">去看看待评价课程</view>
+  </view>
+</view>

@@ -1,0 +1,52 @@
+<view class="page-container">
+  <picker
+    mode="selector"
+    range="{{semesters}}"
+    range-key="semesterName"
+    value="{{semesterIndex}}"
+    bindchange="onSemesterChange"
+  >
+    <view class="filter">
+      <text class="filter__label">学期</text>
+      <text class="filter__value">{{semesters[semesterIndex].semesterName || '全部学期'}}</text>
+      <text class="filter__arrow">▾</text>
+    </view>
+  </picker>
+
+  <view class="summary-bar">
+    本学期共 <text class="summary-bar__num">{{total}}</text> 门课程
+  </view>
+
+  <view wx:if="{{loading}}" class="empty">加载中...</view>
+
+  <block wx:elif="{{groups.length > 0}}">
+    <view class="day" wx:for="{{groups}}" wx:key="day">
+      <view class="day__label">{{item.dayLabel}}</view>
+
+      <!-- 注意：一门课可能有多次排课（如同一门课分理论课与实验课），
+           用 courseId 作 key 会重复，因此用数组下标 -->
+      <view class="card lesson" wx:for="{{item.items}}" wx:for-item="lesson" wx:for-index="lessonIndex" wx:key="lessonIndex">
+        <view class="lesson__head">
+          <view class="lesson__name">{{lesson.courseName}}</view>
+          <view class="tag tag--primary">{{lesson.sectionText}}</view>
+        </view>
+
+        <view class="lesson__row">
+          <text class="lesson__time">{{lesson.timeText}}</text>
+          <text class="lesson__location">{{lesson.location || '地点待定'}}</text>
+        </view>
+
+        <view class="lesson__row text-muted">
+          <text>{{lesson.teacherName || '待定'}}</text>
+          <text class="dot">·</text>
+          <text>{{lesson.weekText}}</text>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <view wx:else class="empty">
+    <view class="empty__icon">📅</view>
+    <view>本学期暂无课程安排</view>
+  </view>
+</view>

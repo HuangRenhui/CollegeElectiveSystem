@@ -1,0 +1,209 @@
+.course__name {
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.course__meta {
+  margin-top: 10rpx;
+  font-size: 26rpx;
+}
+
+.dot {
+  margin: 0 10rpx;
+}
+
+.alert {
+  padding: 22rpx 26rpx;
+  margin-bottom: 24rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+}
+
+.alert--danger {
+  color: var(--danger);
+  background: rgba(245, 108, 108, 0.1);
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  margin-bottom: 28rpx;
+}
+
+.section-title--sub {
+  margin-top: 36rpx;
+  margin-bottom: 20rpx;
+  font-size: 28rpx;
+}
+
+.section-title__hint {
+  font-size: 24rpx;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+/* ---------------------------- 星级评分 ---------------------------- */
+.rate-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22rpx 0;
+  border-bottom: 1rpx solid var(--border-light);
+}
+
+.rate-row:last-of-type {
+  border-bottom: none;
+}
+
+.rate-row__name {
+  font-size: 28rpx;
+  color: var(--text-main);
+}
+
+.rate-row__tip {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: var(--text-secondary);
+}
+
+.rate {
+  display: flex;
+  align-items: center;
+}
+
+/* 单个星星可点区域放大到 56rpx（约 28px），满足手指点击最小尺寸 */
+.rate__star {
+  width: 56rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  text-align: center;
+  font-size: 44rpx;
+  color: #dcdfe6;
+}
+
+.rate__star--full {
+  color: #f7ba2a;
+}
+
+/* 半星：用渐变裁剪实现左半实心、右半灰底 */
+.rate__star--half {
+  background: linear-gradient(90deg, #f7ba2a 0%, #f7ba2a 50%, #dcdfe6 50%, #dcdfe6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.rate__value {
+  width: 60rpx;
+  margin-left: 8rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #f7ba2a;
+  text-align: right;
+}
+
+.overall {
+  display: flex;
+  align-items: baseline;
+  margin-top: 28rpx;
+  padding-top: 26rpx;
+  border-top: 1rpx solid var(--border-light);
+}
+
+.overall__label {
+  font-size: 28rpx;
+  color: var(--text-regular);
+  margin-right: 16rpx;
+}
+
+.overall__score {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: var(--warning);
+  line-height: 1;
+}
+
+.overall__unit {
+  margin-left: 6rpx;
+  font-size: 24rpx;
+  color: var(--warning);
+}
+
+.overall__hint {
+  margin-left: auto;
+  font-size: 22rpx;
+  color: var(--text-secondary);
+}
+
+/* ---------------------------- 文字评价 ---------------------------- */
+.textarea {
+  width: 100%;
+  height: 240rpx;
+  padding: 22rpx;
+  box-sizing: border-box;
+  background: #f7f8fa;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  line-height: 1.6;
+}
+
+.textarea__placeholder {
+  color: var(--text-placeholder);
+}
+
+.counter {
+  margin-top: 12rpx;
+  text-align: right;
+  font-size: 22rpx;
+  color: var(--text-secondary);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.tags__item {
+  padding: 12rpx 24rpx;
+  margin: 0 16rpx 16rpx 0;
+  border-radius: 32rpx;
+  background: #f4f4f5;
+  color: var(--text-regular);
+  font-size: 24rpx;
+}
+
+.tags__item--active {
+  background: rgba(64, 158, 255, 0.12);
+  color: var(--primary);
+}
+
+/* ---------------------------- 匿名开关 ---------------------------- */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.switch-row__label {
+  font-size: 28rpx;
+  color: var(--text-main);
+}
+
+.switch-row__tip {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: var(--text-secondary);
+}
+
+/* ---------------------------- 提交 ---------------------------- */
+.submit-btn {
+  margin-top: 16rpx;
+}
+
+.link-btn {
+  margin-top: 32rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: var(--primary);
+}

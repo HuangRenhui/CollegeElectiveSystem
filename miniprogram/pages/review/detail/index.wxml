@@ -1,0 +1,58 @@
+<view class="page-container">
+  <view wx:if="{{loading}}" class="empty">加载中...</view>
+
+  <block wx:else>
+    <!-- 汇总卡片 -->
+    <view class="card summary">
+      <view class="summary__name">{{courseName}}</view>
+      <view class="summary__meta text-muted">
+        <text>{{summary.courseCode || '-'}}</text>
+        <text class="dot">·</text>
+        <text>{{summary.teacherName || '待定'}}</text>
+      </view>
+
+      <view class="summary__overall">
+        <view class="summary__score-wrap">
+          <text class="summary__score">{{summary.averageScore || 0}}</text>
+          <text class="summary__score-unit">分</text>
+        </view>
+        <view class="summary__stats">
+          <view>参评 {{summary.reviewCount || 0}} / {{summary.studentCount || 0}} 人</view>
+          <view class="text-muted">参评率 {{participateRate}}%</view>
+        </view>
+      </view>
+
+      <!-- 四维得分条 -->
+      <view class="dim" wx:for="{{dimensions}}" wx:key="key">
+        <view class="dim__label">{{item.label}}</view>
+        <view class="dim__bar">
+          <view class="dim__bar-inner" style="width: {{item.percent}}%"></view>
+        </view>
+        <view class="dim__score">{{item.score}}</view>
+      </view>
+    </view>
+
+    <!-- 评价明细 -->
+    <view class="list-title">学生评价（{{reviews.length}}）</view>
+
+    <block wx:if="{{reviews.length > 0}}">
+      <view class="card review" wx:for="{{reviews}}" wx:key="id">
+        <view class="review__head">
+          <text class="review__user">{{item.displayName}}</text>
+          <text class="review__score">{{item.averageScore}} 分</text>
+        </view>
+        <view class="review__content">{{item.content || '（未填写文字评价）'}}</view>
+        <view class="review__time text-muted">{{item.submitTime || '-'}}</view>
+      </view>
+
+      <view wx:if="{{loadingMore}}" class="list-more">加载中...</view>
+      <view wx:elif="{{!hasMore}}" class="list-more text-muted">没有更多了</view>
+    </block>
+
+    <view wx:else class="empty">
+      <view class="empty__icon">💬</view>
+      <view>暂无公开评价</view>
+      <view class="text-muted">评价经管理员公开后才会展示</view>
+    </view>
+  </block>
+</view>

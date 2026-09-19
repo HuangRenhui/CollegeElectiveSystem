@@ -1,0 +1,113 @@
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 36rpx 32rpx;
+  margin-bottom: 24rpx;
+  border-radius: 16rpx;
+  background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
+  color: #fff;
+}
+
+.banner__title {
+  font-size: 36rpx;
+  font-weight: 700;
+}
+
+.banner__desc {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  opacity: 0.88;
+}
+
+.banner__progress {
+  text-align: center;
+  padding: 0 8rpx;
+}
+
+.banner__num {
+  font-size: 48rpx;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.banner__unit {
+  font-size: 22rpx;
+  opacity: 0.85;
+}
+
+.filter {
+  display: flex;
+  align-items: center;
+  height: 80rpx;
+  padding: 0 28rpx;
+  margin-bottom: 24rpx;
+  background: #fff;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+}
+
+.filter__label {
+  color: var(--text-secondary);
+  margin-right: 20rpx;
+}
+
+.filter__value {
+  flex: 1;
+  color: var(--text-main);
+}
+
+.filter__arrow {
+  color: var(--text-placeholder);
+}
+
+/* ---------------------------- 课程卡片 ---------------------------- */
+.course__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.course__name {
+  flex: 1;
+  font-size: 32rpx;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-right: 16rpx;
+}
+
+.course__meta {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: var(--text-regular);
+}
+
+.course__dot {
+  margin: 0 10rpx;
+  color: var(--text-placeholder);
+}
+
+.course__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 28rpx;
+  padding-top: 24rpx;
+  border-top: 1rpx solid var(--border-light);
+}
+
+.course__link {
+  font-size: 26rpx;
+  color: var(--primary);
+}
+
+.course__btn {
+  width: 200rpx;
+  height: 72rpx;
+  font-size: 28rpx;
+}
+
+.empty__tip {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+}

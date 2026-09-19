@@ -1,0 +1,74 @@
+<view class="page-container">
+  <!-- 顶部进度条 -->
+  <view class="banner">
+    <view class="banner__main">
+      <view class="banner__title">教学评价</view>
+      <view class="banner__desc">你的反馈将帮助教师改进教学</view>
+    </view>
+    <view class="banner__progress" bindtap="goMine">
+      <view class="banner__num">{{reviewedCount}}</view>
+      <view class="banner__unit">已评</view>
+    </view>
+  </view>
+
+  <!-- 学期筛选 -->
+  <picker
+    mode="selector"
+    range="{{semesters}}"
+    range-key="semesterName"
+    value="{{semesterIndex}}"
+    bindchange="onSemesterChange"
+  >
+    <view class="filter">
+      <text class="filter__label">学期</text>
+      <text class="filter__value">{{semesters[semesterIndex].semesterName || '全部学期'}}</text>
+      <text class="filter__arrow">▾</text>
+    </view>
+  </picker>
+
+  <!-- 待评价列表 -->
+  <view wx:if="{{loading}}" class="empty">加载中...</view>
+
+  <block wx:elif="{{pendingList.length > 0}}">
+    <view class="card course" wx:for="{{pendingList}}" wx:key="selectionId">
+      <view class="course__head">
+        <view class="course__name">{{item.courseName}}</view>
+        <view class="tag tag--warning">待评价</view>
+      </view>
+
+      <view class="course__meta">
+        <text>{{item.courseCode}}</text>
+        <text class="course__dot">·</text>
+        <text>{{item.credit}} 学分</text>
+        <text class="course__dot">·</text>
+        <text>{{item.teacherName || '待定'}}</text>
+      </view>
+
+      <view class="course__meta text-muted">
+        <text>{{item.semesterName || '-'}}</text>
+        <text class="course__dot">·</text>
+        <text>总评 {{item.totalScore === null || item.totalScore === undefined ? '-' : item.totalScore}}</text>
+      </view>
+
+      <view class="course__actions">
+        <view class="course__link" data-course-id="{{item.courseId}}" data-course-name="{{item.courseName}}" bindtap="goDetail">
+          看看评价
+        </view>
+        <view
+          class="btn btn--primary course__btn"
+          data-course-id="{{item.courseId}}"
+          data-course-name="{{item.courseName}}"
+          bindtap="goForm"
+        >
+          去评价
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <view wx:else class="empty">
+    <view class="empty__icon">✓</view>
+    <view>暂无待评价课程</view>
+    <view class="empty__tip">感谢你的反馈</view>
+  </view>
+</view>
