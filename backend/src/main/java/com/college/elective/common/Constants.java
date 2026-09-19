@@ -54,6 +54,35 @@ public final class Constants {
     /** 及格线 */
     public static final double PASS_SCORE = 60.0;
 
+    // ------------------------------ 教学评价 ------------------------------
+    /** 评价草稿（预留，当前流程不产生） */
+    public static final Integer REVIEW_STATUS_DRAFT = 0;
+    /** 评价已提交（学生可修改，教师不可见） */
+    public static final Integer REVIEW_STATUS_SUBMITTED = 1;
+    /** 评价已公开（教师端可见） */
+    public static final Integer REVIEW_STATUS_PUBLISHED = 2;
+    /** 评价已隐藏（违规下架） */
+    public static final Integer REVIEW_STATUS_HIDDEN = 3;
+
+    /** 评价维度数量：教学内容、教学方法、教学态度、学习收获 */
+    public static final int REVIEW_DIMENSION_COUNT = 4;
+    /** 单个评价维度最低分 */
+    public static final int REVIEW_MIN_SCORE = 1;
+    /** 单个评价维度最高分 */
+    public static final int REVIEW_MAX_SCORE = 5;
+    /** 文字评价最短长度 */
+    public static final int REVIEW_MIN_CONTENT_LENGTH = 5;
+    /** 文字评价最长长度 */
+    public static final int REVIEW_MAX_CONTENT_LENGTH = 500;
+
+    /** 匿名评价 */
+    public static final Integer REVIEW_ANONYMOUS_YES = 1;
+    /** 实名评价 */
+    public static final Integer REVIEW_ANONYMOUS_NO = 0;
+
+    /** 管理员变更评价状态时，原因字段的最小长度 */
+    public static final int REVIEW_REASON_MIN_LENGTH = 2;
+
     // ------------------------------ 学期 ------------------------------
     public static final Integer SEMESTER_STATUS_NOT_START = 0;
     public static final Integer SEMESTER_STATUS_SELECTING = 1;

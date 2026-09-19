@@ -16,7 +16,7 @@
 --   mysql -uroot -p < schema.sql
 --
 -- 【风险提示】
---   ⚠️ 本脚本包含 DROP TABLE IF EXISTS 语句，会清空本系统 13 张表的既有数据，
+--   ⚠️ 本脚本包含 DROP TABLE IF EXISTS 语句，会清空本系统 14 张表的既有数据，
 --      但不会影响同库中其他业务表。生产环境请勿随意执行。
 --
 -- 【完整初始化顺序】
@@ -34,6 +34,7 @@ SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS `sys_log`;
+DROP TABLE IF EXISTS `course_review`;
 DROP TABLE IF EXISTS `notice`;
 DROP TABLE IF EXISTS `course_grade`;
 DROP TABLE IF EXISTS `course_selection`;
@@ -314,6 +315,43 @@ CREATE TABLE `course_grade`
     KEY `idx_course_id` (`course_id`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='课程成绩表';
+
+-- ---------------------------------------------------------------------
+-- 课程评价表（学生评教）
+--
+-- 【设计要点】
+--   1. UNIQUE KEY (selection_id) 保证「一选课一评价」，天然支持重修课程独立评价；
+--   2. average_score 为四个维度的算术平均，冗余存储以便列表排序与统计；
+--   3. anonymous = 1 时，教师端与公开列表需隐藏学生身份（VO 层过滤）；
+--   4. status：1-已提交 2-已公开（教师可见）3-已隐藏（违规下架）；
+--   5. 删除评价采用物理删除，否则 selection_id 唯一键会阻挡学生重新提交。
+-- ---------------------------------------------------------------------
+CREATE TABLE `course_review`
+(
+    `id`             BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `selection_id`   BIGINT       NOT NULL COMMENT '选课记录ID（唯一，一选课一评价）',
+    `student_id`     BIGINT       NOT NULL COMMENT '学生ID',
+    `course_id`      BIGINT       NOT NULL COMMENT '课程ID',
+    `teacher_id`     BIGINT                DEFAULT NULL COMMENT '授课教师ID（冗余，便于按教师统计）',
+    `semester_id`    BIGINT       NOT NULL COMMENT '学期ID',
+    `score_content`  TINYINT      NOT NULL DEFAULT 5 COMMENT '教学内容评分：1-5',
+    `score_teaching` TINYINT      NOT NULL DEFAULT 5 COMMENT '教学方法评分：1-5',
+    `score_attitude` TINYINT      NOT NULL DEFAULT 5 COMMENT '教学态度评分：1-5',
+    `score_gain`     TINYINT      NOT NULL DEFAULT 5 COMMENT '学习收获评分：1-5',
+    `average_score`  DECIMAL(3, 1) NOT NULL DEFAULT 0.0 COMMENT '综合评分（四维平均）',
+    `content`        VARCHAR(500)          DEFAULT NULL COMMENT '文字评价',
+    `anonymous`      TINYINT      NOT NULL DEFAULT 1 COMMENT '是否匿名：0-实名 1-匿名',
+    `status`         TINYINT      NOT NULL DEFAULT 1 COMMENT '状态：1-已提交 2-已公开 3-已隐藏',
+    `submit_time`    DATETIME              DEFAULT NULL COMMENT '提交时间',
+    `create_time`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_selection_id` (`selection_id`),
+    KEY `idx_course_status` (`course_id`, `status`),
+    KEY `idx_teacher_semester` (`teacher_id`, `semester_id`),
+    KEY `idx_student_semester` (`student_id`, `semester_id`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='课程评价表';
 
 -- ---------------------------------------------------------------------
 -- 公告表

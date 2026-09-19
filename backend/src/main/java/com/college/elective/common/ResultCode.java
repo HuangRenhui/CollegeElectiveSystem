@@ -55,7 +55,14 @@ public enum ResultCode {
     OPERATION_FORBIDDEN(5003, "该数据禁止被删除或修改"),
     SEMESTER_NOT_FOUND(5004, "学期不存在"),
     CURRENT_SEMESTER_NOT_SET(5005, "尚未设置当前学期"),
-    FEATURE_NOT_IMPLEMENTED(5006, "该功能尚未实现");
+    FEATURE_NOT_IMPLEMENTED(5006, "该功能尚未实现"),
+
+    // ---------------- 教学评价 ----------------
+    REVIEW_NOT_FOUND(6001, "评价记录不存在"),
+    REVIEW_ALREADY_EXISTS(6002, "该课程已提交过评价"),
+    REVIEW_NOT_ALLOWED(6003, "该课程尚未修完，暂无评价资格"),
+    REVIEW_CONTENT_ILLEGAL(6004, "评价评分需为 1-5 分，文字评价需 5-500 字"),
+    REVIEW_HIDDEN(6005, "该评价已被管理员隐藏，无法修改");
 
     private final Integer code;
     private final String message;
