@@ -19,11 +19,13 @@
 ## Table of Contents
 
 - [Introduction](#introduction)
+- [Current Status](#current-status)
 - [Core Features](#core-features)
 - [Tech Stack](#tech-stack)
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
 - [Project Structure](#project-structure)
+- [Student Mini Program](#student-mini-program)
 - [Database Design](#database-design)
 - [API Documentation](#api-documentation)
 - [Concurrency Strategy](#concurrency-strategy)
@@ -36,15 +38,45 @@
 ## Introduction
 
 The system serves three roles — **Student / Teacher / Admin** — covering course enrollment,
-scheduling, grading, notices and academic statistics. It focuses on solving the
+scheduling, grading, course evaluation, notices and academic statistics. It focuses on solving the
 **over-enrollment problem caused by high-concurrency course grabbing**, and provides
 **automatic class-time conflict detection**.
 
 | Role | Capabilities |
 | --- | --- |
-| **STUDENT** | Browse courses, enroll / withdraw, view personal timetable, view grades & GPA |
-| **TEACHER** | View teaching courses, view student rosters, input / publish / revoke grades, view teaching timetable |
-| **ADMIN** | Course & schedule management, student/teacher management, departments/majors/classrooms, semesters & selection windows, notices, operation logs, selection switch & cache preloading |
+| **STUDENT** | Browse courses, enroll / withdraw, view personal timetable, view grades & GPA, submit course evaluations |
+| **TEACHER** | View teaching courses, view student rosters, input / publish / revoke grades, view teaching timetable, view evaluations of own courses |
+| **ADMIN** | Course & schedule management, student/teacher management, departments/majors/classrooms, semesters & selection windows, notices, operation logs, selection switch & cache preloading, evaluation moderation & statistics |
+
+---
+
+## Current Status
+
+The framework, infrastructure and most business modules are complete. The **enrollment** and
+**grade** modules still have unimplemented service classes — their API contracts, data models,
+frontend pages and infrastructure are all in place and await implementation.
+
+| Module | Status | Notes |
+| --- | --- | --- |
+| Auth & Profile | ✅ Ready | JWT login, authorization, password management |
+| Course Management | ✅ Ready | Course CRUD, scheduling, conflict checks, statistics |
+| Student / Teacher Management | ✅ Ready | Profile and account management |
+| Base Info / Semester / Notice / Log | ✅ Ready | Full academic administration |
+| **Enrollment** | ⏳ **Pending** | Course browsing works; enroll, withdraw and conflict detection pending |
+| **Grade** | ⏳ **Pending** | Grade input, publishing and reports pending |
+| **Course Evaluation** | ✅ **Ready** | Student submission, teacher view, admin moderation & statistics |
+| **Student Mini Program** | ✅ **Ready** | Evaluation, timetable and grade queries (native WeChat Mini Program) |
+
+> The **Course Evaluation** module (student rating of teaching) is fully implemented across
+> backend and frontend. See
+> [Pending Features § 4](./docs/待实现功能.md#4-教学评价模块) and
+> [API Reference § 13-15](./docs/接口文档.md#13-教学评价).
+>
+> A **student WeChat Mini Program** (`miniprogram/`) is also provided, reusing the existing
+> backend APIs with no additional backend endpoints. See [Mini Program README](./miniprogram/README.md).
+
+👉 **Implementation guide: [Pending Features](./docs/待实现功能.md)**
+(business rules, Redis strategy, algorithm references, acceptance checklist).
 
 ---
 
@@ -56,6 +88,7 @@ scheduling, grading, notices and academic statistics. It focuses on solving the
 - **Credit limit control** — enforces a per-semester total credit cap.
 - **JWT stateless authentication** — tokens stored in a Redis whitelist for server-side revocation and sliding renewal.
 - **Login protection** — consecutive failure lockout, bcrypt password hashing, forced re-login after password change.
+- **Course evaluation (teaching rating)** — four-dimension scoring with anonymous protection, moderation flow and statistics.
 - **Full academic administration** — departments, majors, classrooms, semesters, courses, notices and logs.
 - **Operation log auditing** — annotation-driven `@OperationLog` with AOP and async persistence.
 - **Unified response & exception handling** — global `Result` structure with `@RestControllerAdvice`.
@@ -92,6 +125,13 @@ scheduling, grading, notices and academic statistics. It focuses on solving the
 | Axios | 1.7 | HTTP client wrapper |
 | ECharts | 5.5 | Data visualization |
 | Day.js | 1.11 | Date utilities |
+
+### Mini Program
+
+| Component | Description |
+| --- | --- |
+| Native WeChat Mini Program | WXML / WXSS / JS, no build tooling required |
+| Base Library | 3.5.5+ |
 
 ### Deployment
 
@@ -254,11 +294,43 @@ CollegeElectiveSystem/
 │       ├── styles/         # Global styles & variables
 │       ├── utils/          # Request wrapper, dictionaries, token storage
 │       └── views/          # Pages
+├── miniprogram/                             # Student WeChat Mini Program (native)
+│   ├── README.md                           # Setup instructions
+│   ├── app.js / app.json / app.wxss        # Entry, page registry, global styles
+│   ├── config/index.js                     # baseUrl & cache keys (change before deploy)
+│   ├── utils/                              # request wrapper, dictionaries
+│   ├── api/                                # auth / common / review / student
+│   └── pages/                              # login, review (4 pages), timetable, grade, mine
 ├── docs/                                    # Documentation
 ├── docker-compose.yml
 ├── README.md
 └── README.en.md
 ```
+
+---
+
+## Student Mini Program
+
+`miniprogram/` is a **student-facing native WeChat Mini Program** that reuses the existing
+backend APIs — no additional service needs to be deployed.
+
+| Page | Features |
+| --- | --- |
+| Pending Evaluations (home) | Card list, reviewed counter, semester filter |
+| Write Evaluation | Four-dimension star rating (half-star), quick tags, anonymous toggle, confirmation |
+| My Evaluations | Edit and withdraw submitted evaluations |
+| Course Evaluations | Average score, four-dimension bars, anonymous details (infinite scroll) |
+| My Timetable | Grouped by weekday with sections, weeks and location |
+| My Grades | Total / earned credits, average score, GPA + detail list |
+| Profile | User info, feature entries, sign out |
+
+**How to run**: open the `miniprogram` folder with WeChat DevTools, pick "test account" as AppID,
+and enable *"Skip domain validation"* under local settings. The API base URL is configured in
+`miniprogram/config/index.js`.
+
+> Full instructions: [Mini Program README](./miniprogram/README.md).
+> Capabilities requiring backend support (WeChat login, subscription messages) are documented in
+> [Pending Features § 4.7.1](./docs/待实现功能.md#471-需要后端支持的增强功能待实现).
 
 ---
 
@@ -281,12 +353,17 @@ CollegeElectiveSystem/
 | `course_grade` | Grades | `selection_id` unique |
 | `notice` | Notices | index `(status, publish_time)` |
 | `sys_log` | Operation logs | time-based archiving |
+| `course_review` | Course evaluations | `selection_id` unique (one review per enrollment) |
 
 ### Notes
 
-- **Logical delete** — all tables except `sys_log` use a `deleted` column handled by MyBatis-Plus.
+- **Logical delete** — all tables except `sys_log` and `course_review` use a `deleted` column
+  handled by MyBatis-Plus.
 - **Optimistic lock** — `course.version` guards concurrent course updates.
 - **Grade formula** — `total_score = usual_score × 0.3 + exam_score × 0.7`, GPA on a 4.0 scale.
+- **Evaluation uniqueness** — `course_review.selection_id` is unique, so retaking a course
+  produces an independent evaluation. Reviews are **physically deleted**, otherwise the
+  unique key would block resubmission.
 
 ---
 
@@ -315,6 +392,9 @@ Use the **Authorize** button and paste the `token` returned by the login API to 
 | 10 | Notice Management | `/admin/notices/**` | ADMIN |
 | 11 | System Management | `/admin/system/**` | ADMIN |
 | 12 | Common | `/common/**` | Authenticated |
+| 13 | Student Evaluations | `/student/reviews/**`, `/student/courses/{id}/review-summary` | STUDENT |
+| 14 | Teacher Evaluations | `/teacher/reviews/**`, `/teacher/courses/{id}/reviews` | TEACHER |
+| 15 | Evaluation Admin | `/admin/reviews/**` | ADMIN |
 
 ### Unified Response
 
@@ -338,6 +418,8 @@ Use the **Authorize** button and paste the `token` returned by the login API to 
 | 3001-3012 | Course & enrollment errors |
 | 4001-4004 | Grade errors |
 | 5001-5005 | System & data errors |
+| 5006 | Feature not implemented yet (returned by Enrollment / Grade before completion) |
+| 6001-6005 | Course evaluation errors |
 
 ---
 
@@ -493,11 +575,12 @@ Released under the [MIT License](./LICENSE).
 
 ## Related Documents
 
-- [Pending Features](./docs/待实现功能.md)
+- [Pending Features](./docs/待实现功能.md) — enrollment & grade implementation guide, course evaluation reference
 - [Architecture Design](./docs/架构设计.md)
 - [Database Design](./docs/数据库设计.md)
 - [API Reference](./docs/接口文档.md)
 - [Deployment Guide](./docs/部署运维.md)
 - [Development Guide](./docs/开发指南.md)
 - [Changelog](./docs/更新日志.md)
+- [Mini Program README](./miniprogram/README.md)
 - [中文文档](./README.md)
