@@ -47,7 +47,7 @@
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="row.status === 1"
@@ -58,7 +58,18 @@
             >
               退课
             </el-button>
-            <span v-else class="text-muted">-</span>
+            <el-button
+              v-if="row.status === 2 && !row.reviewed"
+              link
+              type="primary"
+              @click="$router.push('/student/reviews')"
+            >
+              去评价
+            </el-button>
+            <el-tag v-if="row.status === 2 && row.reviewed" type="success" size="small" effect="plain">
+              已评价
+            </el-tag>
+            <span v-if="row.status === 0" class="text-muted">-</span>
           </template>
         </el-table-column>
       </el-table>
