@@ -58,6 +58,12 @@ public class SemesterServiceImpl extends ServiceImpl<SemesterMapper, Semester> i
     }
 
     @Override
+    public Long getCurrentSemesterId() {
+        Semester semester = getCurrentSemester();
+        return semester == null ? null : semester.getId();
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void saveSemester(Semester semester) {
         if (semester.getStartDate() != null && semester.getEndDate() != null

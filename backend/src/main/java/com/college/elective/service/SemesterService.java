@@ -23,8 +23,20 @@ public interface SemesterService extends IService<Semester> {
 
     /**
      * 获取当前学期。
+     *
+     * @return 当前学期；未设置当前学期时返回 {@code null}
      */
     Semester getCurrentSemester();
+
+    /**
+     * 获取当前学期ID。
+     *
+     * <p>课程查询、课表、统计与选课窗口校验均以当前学期为基准，
+     * 统一从此处获取，避免各处重复实现。</p>
+     *
+     * @return 当前学期ID；未设置当前学期时返回 {@code null}
+     */
+    Long getCurrentSemesterId();
 
     /**
      * 新增/修改学期。

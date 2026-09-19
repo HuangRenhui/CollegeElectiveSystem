@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.college.elective.common.BusinessException;
 import com.college.elective.common.Constants;
 import com.college.elective.common.PageResult;
+import com.college.elective.common.ScheduleConflictUtils;
 import com.college.elective.common.RedisKeys;
 import com.college.elective.common.ResultCode;
 import com.college.elective.dto.CourseDTO;
@@ -17,7 +18,6 @@ import com.college.elective.entity.Classroom;
 import com.college.elective.entity.Course;
 import com.college.elective.entity.CourseSchedule;
 import com.college.elective.entity.CourseSelection;
-import com.college.elective.entity.Semester;
 import com.college.elective.entity.Student;
 import com.college.elective.entity.SysUser;
 import com.college.elective.entity.Teacher;
@@ -26,13 +26,13 @@ import com.college.elective.mapper.CourseMapper;
 import com.college.elective.mapper.CourseScheduleMapper;
 import com.college.elective.mapper.CourseSelectionMapper;
 import com.college.elective.mapper.DepartmentMapper;
-import com.college.elective.mapper.SemesterMapper;
 import com.college.elective.mapper.StudentMapper;
 import com.college.elective.mapper.SysUserMapper;
 import com.college.elective.mapper.TeacherMapper;
 import com.college.elective.security.LoginUser;
 import com.college.elective.security.SecurityUtils;
 import com.college.elective.service.CourseService;
+import com.college.elective.service.SemesterService;
 import com.college.elective.vo.StatisticsVO;
 import com.college.elective.vo.TimetableVO;
 import lombok.RequiredArgsConstructor;
@@ -62,7 +62,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     private final CourseScheduleMapper scheduleMapper;
     private final CourseSelectionMapper selectionMapper;
-    private final SemesterMapper semesterMapper;
+    /** 学期服务：获取当前学期，课程查询与统计均以其为基准 */
+    private final SemesterService semesterService;
     private final TeacherMapper teacherMapper;
     private final StudentMapper studentMapper;
     private final SysUserMapper userMapper;
@@ -335,7 +336,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         // 2. 课程内部多条排课之间不允许重叠
         for (int i = 0; i < list.size(); i++) {
             for (int j = i + 1; j < list.size(); j++) {
-                if (schedulesOverlap(list.get(i), list.get(j))) {
+                if (ScheduleConflictUtils.isConflict(list.get(i), list.get(j))) {
                     throw new BusinessException(ResultCode.SELECTION_CONFLICT,
                             "排课时段存在重叠，请检查第 " + (i + 1) + " 条与第 " + (j + 1) + " 条排课");
                 }
@@ -371,8 +372,10 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         BusinessException.throwIf(schedule.getStartSection() > schedule.getEndSection(),
                 ResultCode.PARAM_ERROR, position + "开始节次不能大于结束节次");
 
-        Integer startWeek = defaultStartWeek(schedule);
-        Integer endWeek = defaultEndWeek(schedule);
+        int startWeek = schedule.getStartWeek() == null
+                ? ScheduleConflictUtils.DEFAULT_START_WEEK : schedule.getStartWeek();
+        int endWeek = schedule.getEndWeek() == null
+                ? ScheduleConflictUtils.DEFAULT_END_WEEK : schedule.getEndWeek();
         BusinessException.throwIf(startWeek > endWeek, ResultCode.PARAM_ERROR,
                 position + "起始周不能大于结束周");
     }
@@ -409,7 +412,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         }
         boolean conflict = existing.stream().anyMatch(item ->
                 Objects.equals(item.getTeacherId(), dto.getTeacherId())
-                        && schedulesOverlap(schedule, item));
+                        && ScheduleConflictUtils.isConflict(schedule, item));
         BusinessException.throwIf(conflict, ResultCode.SELECTION_CONFLICT,
                 "教师在该时段已有其他排课，请调整上课时间");
     }
@@ -424,7 +427,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         }
         boolean conflict = existing.stream().anyMatch(item ->
                 Objects.equals(item.getClassroomId(), schedule.getClassroomId())
-                        && schedulesOverlap(schedule, item));
+                        && ScheduleConflictUtils.isConflict(schedule, item));
         BusinessException.throwIf(conflict, ResultCode.SELECTION_CONFLICT,
                 "该教室在此时段已被占用，请更换教室或调整时间");
     }
@@ -467,87 +470,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         }
     }
 
-    /**
-     * 判断两条排课的时段是否重叠（星期、节次、周次三个维度均需重叠）。
-     *
-     * @param a 排课参数
-     * @param b 另一条排课参数
-     * @return {@code true} 表示时段重叠
-     */
-    private boolean schedulesOverlap(CourseScheduleDTO a, CourseScheduleDTO b) {
-        return overlaps(a.getDayOfWeek(), defaultStartWeek(a), defaultEndWeek(a), a.getWeekType(),
-                b.getDayOfWeek(), defaultStartWeek(b), defaultEndWeek(b), b.getWeekType());
-    }
 
-    /**
-     * 判断排课参数与既有排课记录是否重叠。
-     */
-    private boolean schedulesOverlap(CourseScheduleDTO dto, CourseSchedule entity) {
-        return overlaps(dto.getDayOfWeek(), defaultStartWeek(dto), defaultEndWeek(dto), dto.getWeekType(),
-                entity.getDayOfWeek(), defaultStartWeek(entity), defaultEndWeek(entity), entity.getWeekType());
-    }
-
-    /**
-     * 时段重叠判定：星期相同、节次区间相交、周次区间相交且存在实际同上的周次。
-     *
-     * <p>周次类型的影响：任一方为 ALL 或两者类型相同，则周次区间相交即冲突；
-     * 若一方为 ODD、另一方为 EVEN，需在公共周次区间内存在同奇偶的周次才算冲突。
-     * 例如 ODD 排在第 1-8 周、EVEN 排在第 5-12 周时，第 6、8 周同为偶数的
-     * 公共周次上无法同时上课，仍应判定为冲突。</p>
-     *
-     * @return {@code true} 表示存在重叠
-     */
-    private boolean overlaps(Integer dayA, int startWeekA, int endWeekA, String weekTypeA,
-                             Integer dayB, int startWeekB, int endWeekB, String weekTypeB) {
-        if (!Objects.equals(dayA, dayB)) {
-            return false;
-        }
-        if (startWeekA > endWeekB || endWeekA < startWeekB) {
-            return false;
-        }
-        // 任一方每周上课，或两者周次类型一致时，周次区间相交即为冲突
-        if (Constants.WEEK_TYPE_ALL.equals(weekTypeA)
-                || Constants.WEEK_TYPE_ALL.equals(weekTypeB)
-                || Objects.equals(weekTypeA, weekTypeB)) {
-            return true;
-        }
-        // 单双周类型不同：逐个公共周次检查是否存在两者同时上课的周
-        int from = Math.max(startWeekA, startWeekB);
-        int to = Math.min(endWeekA, endWeekB);
-        for (int week = from; week <= to; week++) {
-            boolean odd = week % 2 == 1;
-            boolean matchA = Constants.WEEK_TYPE_ODD.equals(weekTypeA) == odd;
-            boolean matchB = Constants.WEEK_TYPE_ODD.equals(weekTypeB) == odd;
-            if (matchA && matchB) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /** 起始周默认值：未指定时视为第 1 周，与 CourseScheduleDTO 的字段默认值保持一致 */
-    private static final int DEFAULT_START_WEEK = 1;
-
-    /** 结束周默认值：未指定时视为第 16 周，与 CourseScheduleDTO 的字段默认值保持一致 */
-    private static final int DEFAULT_END_WEEK = 16;
-
-    /** 起始周默认值：未指定时视为第 1 周 */
-    private int defaultStartWeek(CourseScheduleDTO schedule) {
-        return schedule.getStartWeek() == null ? DEFAULT_START_WEEK : schedule.getStartWeek();
-    }
-
-    /** 结束周默认值：未指定时视为学期末周 */
-    private int defaultEndWeek(CourseScheduleDTO schedule) {
-        return schedule.getEndWeek() == null ? DEFAULT_END_WEEK : schedule.getEndWeek();
-    }
-
-    private int defaultStartWeek(CourseSchedule schedule) {
-        return schedule.getStartWeek() == null ? DEFAULT_START_WEEK : schedule.getStartWeek();
-    }
-
-    private int defaultEndWeek(CourseSchedule schedule) {
-        return schedule.getEndWeek() == null ? DEFAULT_END_WEEK : schedule.getEndWeek();
-    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -642,7 +565,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     @Override
     public List<TimetableVO> getStudentTimetable(Long studentId, Long semesterId) {
-        Long effectiveSemester = semesterId != null ? semesterId : currentSemesterId();
+        Long effectiveSemester = semesterId != null ? semesterId : semesterService.getCurrentSemesterId();
         if (effectiveSemester == null) {
             return Collections.emptyList();
         }
@@ -675,7 +598,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     @Override
     public List<TimetableVO> getTeacherTimetable(Long teacherId, Long semesterId) {
-        Long effectiveSemester = semesterId != null ? semesterId : currentSemesterId();
+        Long effectiveSemester = semesterId != null ? semesterId : semesterService.getCurrentSemesterId();
         if (effectiveSemester == null) {
             return Collections.emptyList();
         }
@@ -795,12 +718,6 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         return vo;
     }
 
-    private Long currentSemesterId() {
-        Semester semester = semesterMapper.selectOne(Wrappers.<Semester>lambdaQuery()
-                .eq(Semester::getIsCurrent, 1).last("LIMIT 1"));
-        return semester == null ? null : semester.getId();
-    }
-
     // ==================================================================
     //  统计
     // ==================================================================
@@ -808,7 +725,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     @Override
     public StatisticsVO getStatistics(Long semesterId) {
         StatisticsVO vo = new StatisticsVO();
-        Long effectiveSemester = semesterId != null ? semesterId : currentSemesterId();
+        Long effectiveSemester = semesterId != null ? semesterId : semesterService.getCurrentSemesterId();
 
         vo.setStudentCount(studentMapper.selectCount(null));
         vo.setTeacherCount(teacherMapper.selectCount(null));
