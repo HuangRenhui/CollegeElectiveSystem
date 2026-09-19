@@ -1,26 +1,34 @@
 package com.college.elective.service.impl;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import cn.hutool.core.util.StrUtil;
 import com.college.elective.common.BusinessException;
 import com.college.elective.common.PageResult;
 import com.college.elective.common.PendingImplementation;
 import com.college.elective.common.ResultCode;
+import com.college.elective.common.ScheduleConflictUtils;
 import com.college.elective.dto.CourseQueryDTO;
 import com.college.elective.entity.Course;
+import com.college.elective.entity.CourseSchedule;
 import com.college.elective.entity.CourseSelection;
 import com.college.elective.mapper.CourseMapper;
+import com.college.elective.mapper.CourseScheduleMapper;
 import com.college.elective.mapper.CourseSelectionMapper;
 import com.college.elective.security.LoginUser;
 import com.college.elective.security.SecurityUtils;
 import com.college.elective.service.CourseSelectionService;
+import com.college.elective.service.SemesterService;
 import com.college.elective.vo.ConflictVO;
 import com.college.elective.vo.SelectionResultVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -56,15 +64,19 @@ import java.util.Objects;
 @Service
 @RequiredArgsConstructor
 public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMapper, CourseSelection>
-        implements CourseSelectionService, PendingImplementation {
+    implements CourseSelectionService, PendingImplementation {
 
-    /** 课程 Mapper：查询课程详情、校验选课权限 */
+    /**
+     * 课程 Mapper：查询课程详情、校验选课权限
+     */
     private final CourseMapper courseMapper;
+
+    /** 学期服务：获取当前学期，选课窗口与冲突检测均以其为基准 */
+    private final SemesterService semesterService;
 
     // TODO 待注入依赖（实现选课/退课/预热/同步时启用）
     //  private final StudentMapper studentMapper;
-    //  private final SemesterMapper semesterMapper;
-    //  private final CourseScheduleMapper scheduleMapper;
+    private final CourseScheduleMapper scheduleMapper;
     //  private final StringRedisTemplate stringRedisTemplate;
     //  private final DefaultRedisScript<Long> selectCourseScript;
     //  private final DefaultRedisScript<Long> dropCourseScript;
@@ -102,7 +114,7 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
                                                         Long semesterId, Integer status) {
         Long studentId = SecurityUtils.requireStudentId();
         IPage<CourseSelection> page = baseMapper.selectStudentSelections(
-                new Page<>(pageNum, pageSize), studentId, semesterId, status);
+            new Page<>(pageNum, pageSize), studentId, semesterId, status);
         return PageResult.of(page);
     }
 
@@ -111,7 +123,7 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
                                                           Long pageSize, String keyword) {
         checkCourseAccess(courseId);
         IPage<CourseSelection> page = baseMapper.selectCourseStudents(
-                new Page<>(pageNum, pageSize), courseId, keyword);
+            new Page<>(pageNum, pageSize), courseId, keyword);
         return PageResult.of(page);
     }
 
@@ -131,25 +143,83 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
             return;
         }
         BusinessException.throwIf(!loginUser.isTeacher()
-                        || !Objects.equals(course.getTeacherId(), loginUser.getTeacherId()),
-                ResultCode.ROLE_NOT_ALLOWED, "无权查看该课程的学生名单");
+                || !Objects.equals(course.getTeacherId(), loginUser.getTeacherId()),
+            ResultCode.ROLE_NOT_ALLOWED, "无权查看该课程的学生名单");
     }
 
     @Override
     public List<ConflictVO> checkConflict(Long courseId) {
-        // TODO 实现选课时间冲突预检（无副作用）
-        //  1. 通过 SecurityUtils.requireStudentId() 获取当前学生ID
-        //  2. 查询目标课程的排课：scheduleMapper.selectByCourseId(courseId)
-        //  3. 查询该学生本学期已选课程的排课：
-        //     scheduleMapper.selectByStudentSelection(studentId, semesterId)
-        //  4. 两两比对，四维判定是否冲突：
-        //     - 星期相同（dayOfWeek）
-        //     - 节次重叠（startA <= endB && endA >= startB）
-        //     - 周次重叠（[startWeekA,endWeekA] 与 [startWeekB,endWeekB] 有交集）
-        //     - 周类型兼容（ALL 一概冲突；ODD 与 EVEN 需存在同奇偶的公共周次）
-        //  5. 每个冲突构造 ConflictVO 返回，无冲突返回空集合
-        //  参考算法实现：src/test/java/com/college/elective/ScheduleConflictTests.java
-        throw new UnsupportedOperationException("TODO：选课时间冲突预检 尚未实现，请参考 docs/待实现功能.md");
+        Long studentId = SecurityUtils.requireStudentId();
+
+        // 课表按学期划分，冲突比对必须在同一学期内进行，否则会与历史学期课程误判
+        Long semesterId = semesterService.getCurrentSemesterId();
+        BusinessException.throwIf(semesterId == null, ResultCode.CURRENT_SEMESTER_NOT_SET);
+
+        // 目标课程的排课
+        List<CourseSchedule> schedules = scheduleMapper.selectByCourseId(courseId);
+        if (schedules.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 该学生本学期已选课程的排课（SQL 已限定 status = 1，不含已退选）
+        List<CourseSchedule> selectedSchedules =
+                scheduleMapper.selectByStudentSelection(studentId, semesterId);
+        if (selectedSchedules.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 两两比对，命中即记录一条冲突信息，供前端逐条展示
+        List<ConflictVO> conflicts = new ArrayList<>();
+        for (CourseSchedule schedule : schedules) {
+            for (CourseSchedule selected : selectedSchedules) {
+                // 目标课程可能已在已选列表中（重复选课场景），跳过自身避免误报
+                if (Objects.equals(schedule.getCourseId(), selected.getCourseId())) {
+                    continue;
+                }
+                if (ScheduleConflictUtils.isConflict(schedule, selected)) {
+                    conflicts.add(toConflictVO(schedule, selected));
+                }
+            }
+        }
+        return conflicts;
+    }
+
+    /**
+     * 构造冲突提示信息。
+     *
+     * @param target   本次准备选修的课程排课
+     * @param selected 学生已选课程的排课
+     * @return 冲突信息，描述以「已选课程」为主体，便于学生定位是撞了哪门课
+     */
+    private ConflictVO toConflictVO(CourseSchedule target, CourseSchedule selected) {
+        String day = ScheduleConflictUtils.dayText(target.getDayOfWeek());
+        String section = ScheduleConflictUtils.sectionText(
+                target.getStartSection(), target.getEndSection());
+        String week = ScheduleConflictUtils.weekText(
+                defaultStartWeek(target), defaultEndWeek(target), target.getWeekType());
+
+        String description = String.format("与已选课程《%s》的 %s %s %s 时间冲突",
+                StrUtil.blankToDefault(selected.getCourseName(), "未知课程"), day, section, week);
+
+        return new ConflictVO(
+                selected.getCourseName(),
+                selected.getCourseCode(),
+                description,
+                target.getDayOfWeek(),
+                section,
+                week);
+    }
+
+    /** 起始周默认值：未指定时视为第 1 周 */
+    private int defaultStartWeek(CourseSchedule schedule) {
+        return schedule.getStartWeek() == null
+                ? ScheduleConflictUtils.DEFAULT_START_WEEK : schedule.getStartWeek();
+    }
+
+    /** 结束周默认值：未指定时视为第 16 周 */
+    private int defaultEndWeek(CourseSchedule schedule) {
+        return schedule.getEndWeek() == null
+                ? ScheduleConflictUtils.DEFAULT_END_WEEK : schedule.getEndWeek();
     }
 
     @Override

@@ -378,10 +378,17 @@ async function handleSelect(course) {
 
 /**
  * 将冲突课程渲染为确认弹窗中的 HTML 列表。
+ *
+ * 后端 ConflictVO 将时间拆分为节次与周次两个字段，此处拼接后展示，
+ * 便于学生判断冲突的具体时间段是否真的无法协调。
  */
 function buildConflictHtml(course, conflicts) {
   const lines = conflicts
-    .map((item) => `《${item.courseName || item.conflictCourseName || '已选课程'}》${item.scheduleText || ''}`)
+    .map((item) => {
+      const timeText = [item.sectionText, item.weekText].filter(Boolean).join(' ')
+      const name = item.conflictCourseName || item.courseName || '已选课程'
+      return `《${name}》${timeText ? ' ' + timeText : ''}`
+    })
     .join('<br/>')
   return `<p>《${course.courseName}》与以下已选课程上课时间重叠：</p>
     <p style="color:#f56c6c;line-height:1.9">${lines}</p>
