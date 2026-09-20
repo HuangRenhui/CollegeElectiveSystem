@@ -62,8 +62,8 @@ frontend pages and infrastructure are all in place and await implementation.
 | Course Management | ✅ Ready | Course CRUD, scheduling, conflict checks, statistics |
 | Student / Teacher Management | ✅ Ready | Profile and account management |
 | Base Info / Semester / Notice / Log | ✅ Ready | Full academic administration |
-| **Enrollment** | ⏳ **Pending** | Course browsing works; enroll, withdraw and conflict detection pending |
-| **Grade** | ⏳ **Pending** | Grade input, publishing and reports pending |
+| **Enrollment** | 🚧 **Partial** | Course browsing, conflict pre-check, my selections and cache preload work; enroll, withdraw and count sync pending |
+| **Grade** | 🚧 **Partial** | Queries work (grade page, input sheet, report); grade input and publishing pending |
 | **Course Evaluation** | ✅ **Ready** | Student submission, teacher view, admin moderation & statistics |
 | **Student Mini Program** | ✅ **Ready** | Evaluation, timetable and grade queries (native WeChat Mini Program) |
 
