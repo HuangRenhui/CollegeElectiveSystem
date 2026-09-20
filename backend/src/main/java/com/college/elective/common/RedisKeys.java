@@ -45,4 +45,12 @@ public final class RedisKeys {
 
     /** 默认缓存过期时间（分钟） */
     public static final long DEFAULT_CACHE_MINUTES = 30L;
+
+    /**
+     * 默认缓存过期时间（秒），供 Lua 脚本设置 TTL 使用。
+     *
+     * <p>与 {@link #DEFAULT_CACHE_MINUTES} 保持一致，
+     * 用于让容量 key 与已选学生集合 key 共享同一生命周期。</p>
+     */
+    public static final long DEFAULT_CACHE_SECONDS = DEFAULT_CACHE_MINUTES * 60;
 }

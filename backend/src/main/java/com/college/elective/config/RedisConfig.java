@@ -49,6 +49,11 @@ public class RedisConfig {
 
     /**
      * 选课原子脚本：查重 + 扣减余量 + 写入已选集合。
+     *
+     * <p>调用时需传入 {@code [capacityKey, selectedKey]} 与
+     * {@code [studentId, ttlSeconds]}，其中 ttlSeconds 使用
+     * {@link com.college.elective.common.RedisKeys#DEFAULT_CACHE_SECONDS}，
+     * 使容量 key 与已选集合 key 保持同一生命周期。</p>
      */
     @Bean
     public DefaultRedisScript<Long> selectCourseScript() {
@@ -60,6 +65,9 @@ public class RedisConfig {
 
     /**
      * 退课原子脚本：移除已选记录 + 归还余量。
+     *
+     * <p>调用时需传入 {@code [capacityKey, selectedKey]} 与
+     * {@code [studentId, ttlSeconds]}，用于对两个 key 同步续期。</p>
      */
     @Bean
     public DefaultRedisScript<Long> dropCourseScript() {

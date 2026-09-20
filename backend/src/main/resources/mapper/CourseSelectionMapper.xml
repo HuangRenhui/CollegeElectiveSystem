@@ -90,4 +90,18 @@
           AND semester_id = #{semesterId}
     </select>
 
+    <!-- 批量查询所选课程的有效选课学生，一次 IO 供缓存预热使用 -->
+    <select id="selectValidSelectionsByCourseIds" resultType="com.college.elective.entity.CourseSelection">
+        SELECT sel.course_id AS courseId,
+        sel.student_id       AS studentId
+        FROM course_selection sel
+        WHERE sel.deleted = 0
+        AND sel.status = 1
+        AND sel.course_id IN
+        <foreach collection="courseIds" item="courseId" open="(" separator="," close=")">
+            #{courseId}
+        </foreach>
+        ORDER BY sel.course_id ASC, sel.student_id ASC
+    </select>
+
 </mapper>

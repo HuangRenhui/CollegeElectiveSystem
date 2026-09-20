@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -46,4 +47,15 @@ public interface CourseSelectionMapper extends BaseMapper<CourseSelection> {
      * 查询某学期选课记录总数。
      */
     Long countBySemester(@Param("semesterId") Long semesterId);
+
+    /**
+     * 批量查询所选课程的有效选课学生（一次查出，供缓存预热使用）。
+     *
+     * <p>入参为空集合时由调用方保证不触发查询，避免生成 {@code IN ()} 非法 SQL。</p>
+     *
+     * @param courseIds 课程ID集合
+     * @return 扁平的「课程ID + 学生ID」记录，由调用方在内存中按课程分组
+     */
+    List<CourseSelection> selectValidSelectionsByCourseIds(
+        @Param("courseIds") Collection<Long> courseIds);
 }
