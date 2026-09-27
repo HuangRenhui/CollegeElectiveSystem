@@ -53,8 +53,9 @@ scheduling, grading, course evaluation, notices and academic statistics. It focu
 ## Current Status
 
 The framework, infrastructure and most business modules are complete. The **enrollment** and
-**grade** modules still have unimplemented service classes — their API contracts, data models,
-frontend pages and infrastructure are all in place and await implementation.
+**grade** modules are **partially implemented** — the enrollment main flow and all query methods
+work; withdrawal, count sync and grade input/publishing are still pending. Their API contracts,
+data models, frontend pages and infrastructure are all in place.
 
 | Module | Status | Notes |
 | --- | --- | --- |
@@ -62,7 +63,7 @@ frontend pages and infrastructure are all in place and await implementation.
 | Course Management | ✅ Ready | Course CRUD, scheduling, conflict checks, statistics |
 | Student / Teacher Management | ✅ Ready | Profile and account management |
 | Base Info / Semester / Notice / Log | ✅ Ready | Full academic administration |
-| **Enrollment** | 🚧 **Partial** | Course browsing, conflict pre-check, my selections and cache preload work; enroll, withdraw and count sync pending |
+| **Enrollment** | 🚧 **Core ready** | Enroll (Redis Lua reservation + cache refill + DB rollback), course browsing, conflict pre-check, my selections and cache preload work; withdraw and count sync pending |
 | **Grade** | 🚧 **Partial** | Queries work (grade page, input sheet, report); grade input and publishing pending |
 | **Course Evaluation** | ✅ **Ready** | Student submission, teacher view, admin moderation & statistics |
 | **Student Mini Program** | ✅ **Ready** | Evaluation, timetable and grade queries (native WeChat Mini Program) |
@@ -82,9 +83,10 @@ frontend pages and infrastructure are all in place and await implementation.
 
 ## Core Features
 
-- **High-concurrency safe enrollment** — Redis + Lua performs duplicate-check, capacity check, decrement and record insertion atomically.
+- **High-concurrency safe enrollment** — Redis + Lua performs duplicate-check, capacity check, decrement and record insertion atomically; a failed DB write rolls the reservation back.
 - **Automatic time-conflict detection** — four-dimension overlap check (day of week + sections + weeks + odd/even week).
-- **Cache preloading & consistency fallback** — one-click course cache preloading plus a scheduled job reconciling DB counts with Redis.
+- **Cache preloading & refill** — one-click cache preloading, plus `SETNX` lock + spin-wait refill when a capacity key is missing, avoiding a burst of "cache not ready" failures on the first enrollment day.
+- **Consistency fallback** — a scheduled job reconciles DB counts with Redis.
 - **Credit limit control** — enforces a per-semester total credit cap.
 - **JWT stateless authentication** — tokens stored in a Redis whitelist for server-side revocation and sliding renewal.
 - **Login protection** — consecutive failure lockout, bcrypt password hashing, forced re-login after password change.
