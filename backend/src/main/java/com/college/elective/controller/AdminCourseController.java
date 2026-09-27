@@ -20,11 +20,12 @@ import org.springframework.web.bind.annotation.*;
 /**
  * 管理员课程管理接口。
  *
- * <p>缓存预热与选课人数同步方法尚未实现，需在完成
- * {@link CourseSelectionService} 的实现类后补充。
- * 应用通过 {@link ObjectProvider} 延迟获取该服务，因此在其实现类缺失时
- * 仍可正常启动，调用未实现接口会返回明确的业务提示。
- * 课程 CRUD 与统计可直接使用。</p>
+ * <p>缓存预热（{@code preloadCourseCache}）已接入真实实现，可正常使用；
+ * 选课人数同步（{@code syncSelectionCount}）尚未实现，
+ * 由服务层抛出统一业务异常（业务码 5006）。</p>
+ *
+ * <p>应用通过 {@link ObjectProvider} 延迟获取该服务，属历史兼容写法；
+ * 实现类已摘除待实现标记，判空分支不会再命中。课程 CRUD 与统计可直接使用。</p>
  *
  * @see com.college.elective.service.CourseSelectionService
  */

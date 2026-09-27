@@ -24,11 +24,12 @@ import java.util.List;
 /**
  * 学生选课接口。
  *
- * <p>选课、退课、冲突检测相关方法尚未实现，需在完成
- * {@link CourseSelectionService} 的实现类后补充。
- * 应用通过 {@link ObjectProvider} 延迟获取该服务，因此在其实现类缺失时
- * 仍可正常启动，调用未实现接口会返回明确的业务提示。
- * 课程浏览与课表查询（{@link CourseService}）可直接使用。</p>
+ * <p>选课、冲突检测、可选课程与选课记录查询均已接入 {@link CourseSelectionService}
+ * 的真实实现；仅「退课」（{@code dropCourse}）尚未实现，
+ * 由服务层抛出统一业务异常（业务码 5006），前端会收到明确的「尚未实现」提示。</p>
+ *
+ * <p>应用仍通过 {@link ObjectProvider} 延迟获取该服务，属历史兼容写法；
+ * 由于实现类已摘除待实现标记，判空分支不会再命中，可择机清理为直接注入。</p>
  *
  * @see com.college.elective.service.CourseSelectionService
  */
