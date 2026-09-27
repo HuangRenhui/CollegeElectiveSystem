@@ -19,9 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 学生成绩查询接口。
  *
- * <p>方法尚未实现，需在完成 {@link CourseGradeService} 的实现类后补充。
- * 应用通过 {@link ObjectProvider} 延迟获取该服务，因此在其实现类缺失时
- * 仍可正常启动，调用未实现接口会返回明确的业务提示。</p>
+ * <p>成绩单与成绩查询已接入 {@link CourseGradeService} 的真实实现
+ * （成绩服务中查询类方法已实现）。</p>
+ *
+ * <p>应用通过 {@link ObjectProvider} 延迟获取该服务，属历史兼容写法；
+ * 由于实现类已摘除待实现标记，判空分支不会再命中，可择机清理为直接注入。</p>
  *
  * @see com.college.elective.service.CourseGradeService
  */

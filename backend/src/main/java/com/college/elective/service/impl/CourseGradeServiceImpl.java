@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.college.elective.common.BusinessException;
 import com.college.elective.common.PageResult;
+import com.college.elective.common.PendingFeature;
 import com.college.elective.common.PendingImplementation;
 import com.college.elective.common.ResultCode;
 import com.college.elective.dto.GradeInputDTO;
@@ -28,8 +29,16 @@ import java.util.Objects;
 /**
  * 成绩服务实现。
  *
- * <p><b>当前为骨架实现</b>：所有方法体仅包含 TODO 占位，尚未实现具体业务逻辑。
- * 请参考项目文档 {@code docs/待实现功能.md} 的「成绩模块」章节逐步补全。</p>
+ * <h3>实现状态</h3>
+ * <ul>
+ *   <li><b>已实现</b>：{@link #pageGrades}、{@link #listCourseGradeSheet}、
+ *       {@link #getStudentGradeReport}——成绩查询、录入单与成绩单统计。</li>
+ *   <li><b>待实现</b>：{@link #inputGrades}、{@link #publishGrades}、{@link #revokeGrades}
+ *       ——成绩录入与发布。三者经由 {@link PendingFeature#unsupported(String)}
+ *       抛出统一业务异常（业务码 5006），不再抛运行时异常，
+ *       因此本类已从 {@code PendingImplementation} 摘除，
+ *       Controller 可以直接调用上面已实现的方法。</li>
+ * </ul>
  *
  * <h3>核心业务规则</h3>
  * <ul>
@@ -41,18 +50,17 @@ import java.util.Objects;
  *   <li><b>权限校验</b>：教师仅能操作自己授课课程的成绩（管理员除外）</li>
  * </ul>
  *
- * <h3>建议注入的依赖</h3>
- * <pre>{@code
- * private final CourseMapper courseMapper;
- * private final CourseSelectionMapper selectionMapper;
- * private final SemesterMapper semesterMapper;
- * }</pre>
+ * <h3>与其他组件的协作</h3>
+ * <p>成绩与选课记录通过 {@code course_grade.selection_id}（唯一键）一对一关联。
+ * 录入阶段会把总评回写 {@code course_selection.score} 供学生端快速展示；
+ * 发布与撤回阶段联动 {@code course_selection.status}（1-已选课 ⇄ 2-已修完），
+ * 而该状态同时是教学评价「参评资格」的判定依据——改动联动逻辑时需一并考虑评价模块。</p>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class CourseGradeServiceImpl extends ServiceImpl<CourseGradeMapper, CourseGrade>
-        implements CourseGradeService, PendingImplementation {
+        implements CourseGradeService {
 
     /** 课程 Mapper：查询课程详情、校验成绩操作权限 */
     private final CourseMapper courseMapper;
@@ -61,41 +69,90 @@ public class CourseGradeServiceImpl extends ServiceImpl<CourseGradeMapper, Cours
     //  private final CourseSelectionMapper selectionMapper;
     //  private final SemesterMapper semesterMapper;
 
+    /**
+     * 教师批量录入成绩（保存为草稿）—— 待实现。
+     *
+     * <p><b>为什么改抛业务异常而不是 UnsupportedOperationException</b>：
+     * 本类已从 {@link PendingImplementation} 摘除，Controller 会直接调用真实实现。
+     * 若未实现的方法仍抛运行时异常，会被全局异常处理器包装成 HTTP 500，
+     * 破坏「业务异常统一返回 HTTP 200 + 业务码」的既有约定。
+     * 改用 {@link PendingFeature#unsupported(String)} 后，前端收到的仍是
+     * 明确的业务码 5006，与实现前的表现完全一致，也不会污染错误日志。</p>
+     *
+     * <p><b>实现要点</b>（完整设计见 {@code docs/待实现功能.md} 的规则 1、2、5）：</p>
+     * <ol>
+     *   <li>校验 {@code courseId} 非空，查询课程并做教师权限校验
+     *       （管理员不受限，教师仅能操作自己授课的课程，越权返回 4004）；</li>
+     *   <li>遍历 {@code dto.getItems()}：
+     *     <ul>
+     *       <li>校验成绩范围（0-100），越界抛 4003；允许为 {@code null}（表示该项暂未录入）；</li>
+     *       <li>定位选课记录：优先按 {@code selectionId}，其次按 {@code studentId} + 本课程；</li>
+     *       <li>查询已有成绩（按 {@code selectionId} 唯一）：已发布/已归档抛 4002，
+     *           新增时初始化 {@code studentId}/{@code courseId}/{@code semesterId} 并置
+     *           {@code status = 0}（草稿）；</li>
+     *       <li>由<b>后端</b>计算总评与绩点（DTO 不接收总评，防止前端篡改为不合理高分）；</li>
+     *       <li>设置 {@code inputTime}、{@code inputBy} 后保存（{@code saveOrUpdate}）；</li>
+     *       <li>把总评回写 {@code course_selection.score}，便于学生端列表快速展示。</li>
+     *     </ul>
+     *   </li>
+     * </ol>
+     *
+     * @param dto 成绩录入参数（批量）
+     */
     @Override
     public void inputGrades(GradeInputDTO dto) {
-        // TODO 实现教师批量录入成绩（保存为草稿）
-        //  1. 校验 courseId 非空，查询课程并做教师权限校验（教师仅能操作自己的课程）
-        //  2. 遍历 dto.getItems()：
-        //     - 校验成绩范围，超出 0-100 抛 4003
-        //     - 定位选课记录：优先 selectionId，其次 studentId（需 courseId + status = 1）
-        //     - 查询已有成绩记录：
-        //       已发布/已归档 -> 抛 4002；新增则初始化并置 status = 0（草稿）
-        //     - 计算总评与绩点，设置 inputTime / inputBy
-        //     - 保存（saveOrUpdate）
-        //     - 同步：将总评回写 course_selection.score，便于学生端展示
-        throw new UnsupportedOperationException("TODO：批量录入成绩 尚未实现，请参考 docs/待实现功能.md");
+        throw PendingFeature.unsupported("批量录入成绩");
     }
 
+    /**
+     * 发布课程成绩（草稿 → 已发布）—— 待实现。
+     *
+     * <p>与 {@link #inputGrades} 同理，此处抛业务异常（5006）而非运行时异常，
+     * 保证摘除待实现标记后接口仍返回规范的业务提示。</p>
+     *
+     * <p><b>实现要点</b>（完整设计见 {@code docs/待实现功能.md} 规则 3、6）：</p>
+     * <ol>
+     *   <li>查询课程并做教师权限校验；</li>
+     *   <li>取该课程草稿状态的成绩记录，为空则提示「暂无可发布的成绩记录」；</li>
+     *   <li><b>完整性校验</b>：若仍有记录的总评为 {@code null}，抛
+     *       「还有 N 名学生未录入成绩，无法发布」——避免学生查到「已发布但没分数」；</li>
+     *   <li>批量置为已发布（{@code status = 1}）并写入 {@code publishTime}；</li>
+     *   <li><b>数据联动</b>：将对应选课记录 {@code status} 由 1（已选课）改为 2（已修完）。
+     *       注意 {@code status = 2} 是教学评价的参评资格依据，也是「我的选课」页
+     *       「去评价」按钮的显示条件；</li>
+     *   <li>副作用提示：选课记录变为 2 后，课表查询与时间冲突检测（均只查
+     *       {@code status = 1}）将不再包含这些课程——这是符合预期的，课程已结束。</li>
+     * </ol>
+     *
+     * @param courseId 课程ID
+     */
     @Override
     public void publishGrades(Long courseId) {
-        // TODO 实现发布课程成绩
-        //  1. 查询课程并做教师权限校验
-        //  2. 查询该课程草稿状态的成绩记录，为空则抛「暂无可发布的成绩记录」
-        //  3. 校验是否存在总评成绩为 null 的记录，存在则抛
-        //     「还有 N 名学生未录入成绩，无法发布」
-        //  4. 批量置为已发布（status = 1）并设置 publishTime
-        //  5. 数据联动：将对应选课记录 status 由 1（已选课）改为 2（已修完）
-        throw new UnsupportedOperationException("TODO：发布课程成绩 尚未实现，请参考 docs/待实现功能.md");
+        throw PendingFeature.unsupported("发布课程成绩");
     }
 
+    /**
+     * 撤回成绩发布（已发布 → 草稿）—— 待实现。
+     *
+     * <p>与 {@link #inputGrades} 同理，此处抛业务异常（5006）而非运行时异常。</p>
+     *
+     * <p><b>实现要点</b>（完整设计见 {@code docs/待实现功能.md} 规则 3、7）：</p>
+     * <ol>
+     *   <li>查询课程并做教师权限校验；</li>
+     *   <li>取该课程已发布状态的成绩记录，为空则提示暂无已发布成绩；</li>
+     *   <li>批量改回草稿（{@code status = 0}）并清空 {@code publishTime}——
+     *       清空操作必须用 {@code LambdaUpdateWrapper.set(..., null)}，
+     *       因为 MyBatis-Plus 的 {@code updateById} 会忽略值为 {@code null} 的字段；</li>
+     *   <li>同时将对应选课记录 {@code status} 由 2（已修完）改回 1（已选课），
+     *       否则学生会保留「已修完」状态、继续持有教学评价的参评资格，
+     *       与成绩尚未发布的事实相矛盾。</li>
+     * </ol>
+     *
+     * @param courseId 课程ID
+     */
     @Override
     public void revokeGrades(Long courseId) {
-        // TODO 实现撤回成绩发布
-        //  1. 查询课程并做教师权限校验
-        //  2. 查询已发布状态的成绩记录，为空则提示无数据
-        //  3. 批量改回草稿（status = 0）并清空 publishTime
-        //  4. 建议同时将选课记录 status 由 2 改回 1，保持数据一致
-        throw new UnsupportedOperationException("TODO：撤回成绩发布 尚未实现，请参考 docs/待实现功能.md");
+        throw PendingFeature.unsupported("撤回成绩发布");
     }
 
     @Override

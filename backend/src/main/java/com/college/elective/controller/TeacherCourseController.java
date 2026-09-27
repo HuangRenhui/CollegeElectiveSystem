@@ -26,11 +26,11 @@ import java.util.List;
 /**
  * 教师课程与成绩管理接口。
  *
- * <p>学生名单与成绩录入/发布相关方法尚未实现，需在完成
- * {@link CourseGradeService} 与 {@link CourseSelectionService} 的实现类后补充。
- * 应用通过 {@link ObjectProvider} 延迟获取这两个服务，因此在其实现类缺失时
- * 仍可正常启动，调用未实现接口会返回明确的业务提示。
- * 我的授课课程与教学课表可直接使用。</p>
+ * <p>学生名单（{@link CourseSelectionService}）与成绩录入单查询已接入真实实现；
+ * 成绩录入、发布、撤回（{@link CourseGradeService}）尚未实现，
+ * 由服务层抛出统一业务异常（业务码 5006）。</p>
+ *
+ * <p>我的授课课程与教学课表可直接使用。</p>
  *
  * @see com.college.elective.service.CourseGradeService
  * @see com.college.elective.service.CourseSelectionService
