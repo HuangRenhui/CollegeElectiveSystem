@@ -1,6 +1,12 @@
 package com.college.elective.security;
 
 import com.college.elective.common.Constants;
+import com.college.elective.common.RedisKeys;
+import com.college.elective.entity.Student;
+import com.college.elective.entity.Teacher;
+import com.college.elective.mapper.StudentMapper;
+import com.college.elective.mapper.TeacherMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -29,6 +35,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider tokenProvider;
     private final StringRedisTemplate stringRedisTemplate;
+    private final StudentMapper studentMapper;
+    private final TeacherMapper teacherMapper;
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request,
@@ -46,7 +54,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     LoginUser loginUser = buildLoginUser(claims);
 
                     // 滑动过期：剩余有效期不足时自动续期
-                    if (tokenProvider.shouldRefresh(claims)) {
+                    if (tokenProvider.shouldRefresh(userId)) {
                         tokenProvider.refreshToken(userId, token);
                     }
 
@@ -75,7 +83,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (!Constants.ROLE_ADMIN.equals(role)) {
             try {
                 var operations = stringRedisTemplate.opsForHash();
-                String cacheKey = com.college.elective.common.RedisKeys.AUTH_USER + userId;
+                String cacheKey = RedisKeys.AUTH_USER + userId;
                 String studentId = (String) operations.get(cacheKey, "studentId");
                 String teacherId = (String) operations.get(cacheKey, "teacherId");
                 String deptId = (String) operations.get(cacheKey, "deptId");
@@ -88,10 +96,52 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 if (StringUtils.hasText(deptId)) {
                     loginUser.setDeptId(Long.valueOf(deptId));
                 }
+                fillMissingBinding(loginUser, role, userId, cacheKey);
             } catch (Exception e) {
                 log.warn("读取登录用户扩展信息失败, userId={}", userId, e);
             }
         }
         return loginUser;
+    }
+
+    /**
+     * Redis 扩展缓存缺失时回源数据库，避免合法学生被误判为未绑定。
+     */
+    private void fillMissingBinding(LoginUser loginUser, String role, Long userId, String cacheKey) {
+        boolean missingStudent = Constants.ROLE_STUDENT.equals(role) && loginUser.getStudentId() == null;
+        boolean missingTeacher = Constants.ROLE_TEACHER.equals(role) && loginUser.getTeacherId() == null;
+        if (!missingStudent && !missingTeacher) {
+            return;
+        }
+        if (missingStudent) {
+            Student student = studentMapper.selectOne(Wrappers.<Student>lambdaQuery()
+                .eq(Student::getUserId, userId)
+                .last("LIMIT 1"));
+            if (student != null) {
+                loginUser.setStudentId(student.getId());
+                loginUser.setDeptId(student.getDeptId());
+                cacheBinding(cacheKey, "studentId", student.getId(), "deptId", student.getDeptId());
+            }
+        }
+        if (missingTeacher) {
+            Teacher teacher = teacherMapper.selectOne(Wrappers.<Teacher>lambdaQuery()
+                .eq(Teacher::getUserId, userId)
+                .last("LIMIT 1"));
+            if (teacher != null) {
+                loginUser.setTeacherId(teacher.getId());
+                loginUser.setDeptId(teacher.getDeptId());
+                cacheBinding(cacheKey, "teacherId", teacher.getId(), "deptId", teacher.getDeptId());
+            }
+        }
+    }
+
+    private void cacheBinding(String cacheKey, String idField, Long id, String deptField, Long deptId) {
+        if (id != null) {
+            stringRedisTemplate.opsForHash().put(cacheKey, idField, String.valueOf(id));
+        }
+        if (deptId != null) {
+            stringRedisTemplate.opsForHash().put(cacheKey, deptField, String.valueOf(deptId));
+        }
+        stringRedisTemplate.expire(cacheKey, tokenProvider.getExpireSeconds(), java.util.concurrent.TimeUnit.SECONDS);
     }
 }

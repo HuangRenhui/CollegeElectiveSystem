@@ -40,7 +40,6 @@ public class SecurityConfig {
     /** 无需认证即可访问的路径 */
     private static final String[] WHITE_LIST = {
             "/auth/login",
-            "/auth/captcha",
             "/doc.html",
             "/webjars/**",
             "/swagger-ui/**",

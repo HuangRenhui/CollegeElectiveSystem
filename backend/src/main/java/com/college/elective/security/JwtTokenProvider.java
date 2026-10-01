@@ -3,6 +3,7 @@ package com.college.elective.security;
 import com.college.elective.common.RedisKeys;
 import com.college.elective.config.ElectiveProperties;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -76,7 +77,8 @@ public class JwtTokenProvider {
     }
 
     /**
-     * 解析令牌，非法或过期返回 null。
+     * 解析令牌。签名非法返回 null；已过期但签名正确仍返回声明，
+     * 由 Redis 白名单决定是否继续有效（滑动会话）。
      */
     public Claims parseToken(String token) {
         try {
@@ -86,6 +88,8 @@ public class JwtTokenProvider {
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+        } catch (ExpiredJwtException e) {
+            return e.getClaims();
         } catch (JwtException | IllegalArgumentException e) {
             log.debug("JWT 解析失败: {}", e.getMessage());
             return null;
@@ -101,7 +105,15 @@ public class JwtTokenProvider {
     }
 
     /**
-     * 判断令牌剩余有效期是否低于续期阈值。
+     * 白名单剩余有效期低于阈值时续期。
+     */
+    public boolean shouldRefresh(Long userId) {
+        Long ttl = stringRedisTemplate.getExpire(RedisKeys.AUTH_TOKEN + userId, TimeUnit.SECONDS);
+        return ttl != null && ttl > 0 && ttl < properties.getJwt().getRefreshThresholdSeconds();
+    }
+
+    /**
+     * 判断令牌声明剩余有效期是否低于续期阈值（兼容旧调用）。
      */
     public boolean shouldRefresh(Claims claims) {
         Date expiration = claims.getExpiration();
@@ -109,24 +121,25 @@ public class JwtTokenProvider {
             return false;
         }
         long remainingSeconds = (expiration.getTime() - System.currentTimeMillis()) / 1000;
-        return remainingSeconds > 0
-            && remainingSeconds < properties.getJwt().getRefreshThresholdSeconds();
+        return remainingSeconds < properties.getJwt().getRefreshThresholdSeconds();
     }
 
     /**
-     * 将令牌有效期延长至配置值（滑动过期）。
+     * 将令牌与用户扩展缓存的 Redis 有效期延长至配置值（滑动过期）。
      */
     public void refreshToken(Long userId, String token) {
         long expireSeconds = properties.getJwt().getExpireSeconds();
         stringRedisTemplate.opsForValue().set(
             RedisKeys.AUTH_TOKEN + userId, token, expireSeconds, TimeUnit.SECONDS);
+        stringRedisTemplate.expire(RedisKeys.AUTH_USER + userId, expireSeconds, TimeUnit.SECONDS);
     }
 
     /**
-     * 注销令牌：从白名单移除。
+     * 注销令牌：从白名单移除，并清理登录扩展缓存。
      */
     public void invalidateToken(Long userId) {
         stringRedisTemplate.delete(RedisKeys.AUTH_TOKEN + userId);
+        stringRedisTemplate.delete(RedisKeys.AUTH_USER + userId);
     }
 
     /**

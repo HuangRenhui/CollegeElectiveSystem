@@ -15,6 +15,7 @@ import com.college.elective.entity.Teacher;
 import com.college.elective.mapper.CourseMapper;
 import com.college.elective.mapper.SysUserMapper;
 import com.college.elective.mapper.TeacherMapper;
+import com.college.elective.security.JwtTokenProvider;
 import com.college.elective.service.TeacherService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +38,7 @@ public class TeacherServiceImpl extends ServiceImpl<TeacherMapper, Teacher> impl
     private final SysUserMapper userMapper;
     private final CourseMapper courseMapper;
     private final PasswordEncoder passwordEncoder;
+    private final JwtTokenProvider tokenProvider;
 
     @Override
     public PageResult<Teacher> pageTeachers(Long pageNum, Long pageSize, String keyword,
@@ -165,6 +167,7 @@ public class TeacherServiceImpl extends ServiceImpl<TeacherMapper, Teacher> impl
             user.setId(teacher.getUserId());
             user.setStatus(Constants.STATUS_DISABLED);
             userMapper.updateById(user);
+            tokenProvider.invalidateToken(teacher.getUserId());
         }
         log.info("删除教师成功: {}", teacher.getTeacherNo());
     }
@@ -179,6 +182,9 @@ public class TeacherServiceImpl extends ServiceImpl<TeacherMapper, Teacher> impl
         user.setId(teacher.getUserId());
         user.setStatus(status);
         userMapper.updateById(user);
+        if (Constants.STATUS_DISABLED.equals(status) && teacher.getUserId() != null) {
+            tokenProvider.invalidateToken(teacher.getUserId());
+        }
     }
 
     @Override

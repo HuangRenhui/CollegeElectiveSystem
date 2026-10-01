@@ -9,10 +9,13 @@ import com.college.elective.common.Constants;
 import com.college.elective.common.PageResult;
 import com.college.elective.common.ResultCode;
 import com.college.elective.dto.StudentDTO;
+import com.college.elective.entity.CourseSelection;
 import com.college.elective.entity.Student;
 import com.college.elective.entity.SysUser;
+import com.college.elective.mapper.CourseSelectionMapper;
 import com.college.elective.mapper.StudentMapper;
 import com.college.elective.mapper.SysUserMapper;
+import com.college.elective.security.JwtTokenProvider;
 import com.college.elective.service.StudentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +39,8 @@ public class StudentServiceImpl extends ServiceImpl<StudentMapper, Student> impl
 
     private final SysUserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final JwtTokenProvider tokenProvider;
+    private final CourseSelectionMapper selectionMapper;
 
     @Override
     public PageResult<Student> pageStudents(Long pageNum, Long pageSize, String keyword,
@@ -153,18 +158,24 @@ public class StudentServiceImpl extends ServiceImpl<StudentMapper, Student> impl
         Student student = getById(id);
         BusinessException.throwIf(student == null, ResultCode.STUDENT_NOT_FOUND);
 
-        Long selectionCount = baseMapper.selectCount(Wrappers.<Student>lambdaQuery()
-                .eq(Student::getId, id));
+        Long selectionCount = selectionMapper.selectCount(Wrappers.<CourseSelection>lambdaQuery()
+                .eq(CourseSelection::getStudentId, id)
+                .eq(CourseSelection::getStatus, Constants.SELECTION_SELECTED));
+        if (selectionCount != null && selectionCount > 0) {
+            throw new BusinessException(ResultCode.OPERATION_FORBIDDEN,
+                    "该学生仍有 " + selectionCount + " 条有效选课记录，无法删除");
+        }
+
         removeById(id);
 
-        // 逻辑删除用户，禁止其继续登录
         if (student.getUserId() != null) {
             SysUser user = new SysUser();
             user.setId(student.getUserId());
             user.setStatus(Constants.STATUS_DISABLED);
             userMapper.updateById(user);
+            tokenProvider.invalidateToken(student.getUserId());
         }
-        log.info("删除学生成功: {} (关联选课记录 {} 条)", student.getStuNo(), selectionCount);
+        log.info("删除学生成功: {}", student.getStuNo());
     }
 
     @Override
@@ -177,6 +188,9 @@ public class StudentServiceImpl extends ServiceImpl<StudentMapper, Student> impl
         user.setId(student.getUserId());
         user.setStatus(status);
         userMapper.updateById(user);
+        if (Constants.STATUS_DISABLED.equals(status) && student.getUserId() != null) {
+            tokenProvider.invalidateToken(student.getUserId());
+        }
         log.info("学生 {} 账号状态变更为 {}", student.getStuNo(), status);
     }
 
