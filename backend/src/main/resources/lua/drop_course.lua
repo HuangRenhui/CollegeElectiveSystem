@@ -2,12 +2,18 @@
   退课原子脚本：从已选集合中移除学生，并归还余量
   KEYS[1] = elective:course:capacity:{courseId}   课程剩余容量（String）
   KEYS[2] = elective:course:selected:{courseId}   已选学生集合（Set）
+  KEYS[3] = elective:course:lock:{courseId}       回源短锁，存在时拒绝归还以免被覆盖
   ARGV[1] = studentId
   ARGV[2] = ttlSeconds  缓存过期时间（秒），用于让两个 key 保持同一生命周期
   返回值：
     0 退课预占成功
     1 该学生未选此课程
+    2 正在回源，请稍后重试
 ]]
+if redis.call('EXISTS', KEYS[3]) == 1 then
+    return 2
+end
+
 local ttl = tonumber(ARGV[2])
 
 if redis.call('SREM', KEYS[2], ARGV[1]) == 1 then

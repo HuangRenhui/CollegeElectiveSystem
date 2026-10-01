@@ -2,6 +2,7 @@
   选课原子脚本：在 Redis 中完成「查重 + 扣减余量 + 写入已选集合」三个动作
   KEYS[1] = elective:course:capacity:{courseId}   课程剩余容量（String）
   KEYS[2] = elective:course:selected:{courseId}   已选学生集合（Set，成员为 studentId）
+  KEYS[3] = elective:course:lock:{courseId}       回源短锁，存在时拒绝预占以免被覆盖
   ARGV[1] = studentId
   ARGV[2] = ttlSeconds  缓存过期时间（秒），用于让两个 key 保持同一生命周期
   返回值：
@@ -10,6 +11,10 @@
     2 余量不足（课程已满）
     3 缓存未初始化（需要先执行预热/回源）
 ]]
+if redis.call('EXISTS', KEYS[3]) == 1 then
+    return 3
+end
+
 local capacity = redis.call('GET', KEYS[1])
 if capacity == false then
     return 3

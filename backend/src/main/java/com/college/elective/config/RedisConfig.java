@@ -50,10 +50,8 @@ public class RedisConfig {
     /**
      * 选课原子脚本：查重 + 扣减余量 + 写入已选集合。
      *
-     * <p>调用时需传入 {@code [capacityKey, selectedKey]} 与
-     * {@code [studentId, ttlSeconds]}，其中 ttlSeconds 使用
-     * {@link com.college.elective.common.RedisKeys#DEFAULT_CACHE_SECONDS}，
-     * 使容量 key 与已选集合 key 保持同一生命周期。</p>
+     * <p>调用时需传入 {@code [capacityKey, selectedKey, lockKey]} 与
+     * {@code [studentId, ttlSeconds]}。回源锁存在时脚本返回 3，避免预占被覆盖。</p>
      */
     @Bean
     public DefaultRedisScript<Long> selectCourseScript() {
@@ -66,8 +64,8 @@ public class RedisConfig {
     /**
      * 退课原子脚本：移除已选记录 + 归还余量。
      *
-     * <p>调用时需传入 {@code [capacityKey, selectedKey]} 与
-     * {@code [studentId, ttlSeconds]}，用于对两个 key 同步续期。</p>
+     * <p>调用时需传入 {@code [capacityKey, selectedKey, lockKey]} 与
+     * {@code [studentId, ttlSeconds]}。回源锁存在时返回 2，由调用方重试。</p>
      */
     @Bean
     public DefaultRedisScript<Long> dropCourseScript() {
@@ -87,6 +85,22 @@ public class RedisConfig {
     public DefaultRedisScript<Long> recordLoginFailScript() {
         DefaultRedisScript<Long> script = new DefaultRedisScript<>();
         script.setLocation(new ClassPathResource("lua/record_login_fail.lua"));
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    @Bean
+    public DefaultRedisScript<Long> rebuildCourseCacheScript() {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("lua/rebuild_course_cache.lua"));
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    @Bean
+    public DefaultRedisScript<Long> releaseLockScript() {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("lua/release_lock.lua"));
         script.setResultType(Long.class);
         return script;
     }
