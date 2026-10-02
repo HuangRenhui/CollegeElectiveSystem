@@ -37,6 +37,12 @@ mybatis-plus:
 knife4j:
   production: true
 
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 logging:
   level:
     root: warn
