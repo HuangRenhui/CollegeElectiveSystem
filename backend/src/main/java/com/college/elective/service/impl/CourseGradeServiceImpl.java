@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.college.elective.common.BusinessException;
 import com.college.elective.common.PageResult;
+import com.college.elective.common.Pages;
 import com.college.elective.common.PendingFeature;
 import com.college.elective.common.PendingImplementation;
 import com.college.elective.common.ResultCode;
@@ -159,7 +160,7 @@ public class CourseGradeServiceImpl extends ServiceImpl<CourseGradeMapper, Cours
     public PageResult<CourseGrade> pageGrades(Long pageNum, Long pageSize, Long studentId,
                                               Long courseId, Long semesterId, Integer status) {
         IPage<CourseGrade> page = baseMapper.selectGradePage(
-                new Page<>(pageNum, pageSize), studentId, courseId, semesterId, status);
+                new Page<>(Pages.pageNum(pageNum), Pages.pageSize(pageSize)), studentId, courseId, semesterId, status);
         return PageResult.of(page);
     }
 
