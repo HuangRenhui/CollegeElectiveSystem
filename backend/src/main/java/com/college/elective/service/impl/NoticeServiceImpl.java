@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 公告服务实现。
@@ -45,7 +46,7 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice> impleme
 
     @Override
     public List<Notice> listVisibleNotices(String role, Integer limit) {
-        int size = limit == null || limit <= 0 ? 10 : limit;
+        int size = limit == null || limit <= 0 ? 10 : Math.min(limit, 50);
         return list(Wrappers.<Notice>lambdaQuery()
                 .eq(Notice::getStatus, 1)
                 // 注意：必须用 .and(w -> ...) 包裹，生成 (target_role = 'ALL' OR target_role = ?)
@@ -63,6 +64,11 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice> impleme
     public Notice getNoticeDetail(Long id) {
         Notice notice = getById(id);
         BusinessException.throwIf(notice == null, ResultCode.DATA_NOT_FOUND, "公告不存在");
+        LoginUser viewer = SecurityUtils.getLoginUser();
+        boolean published = Integer.valueOf(1).equals(notice.getStatus());
+        String target = StrUtil.blankToDefault(notice.getTargetRole(), "ALL");
+        boolean visible = "ALL".equals(target) || Objects.equals(target, viewer.getRole());
+        BusinessException.throwIf(!published || !visible, ResultCode.DATA_NOT_FOUND, "公告不存在");
         baseMapper.increaseViewCount(id);
         notice.setViewCount((notice.getViewCount() == null ? 0 : notice.getViewCount()) + 1);
         return notice;

@@ -3,6 +3,17 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.college.elective.mapper.CourseReviewMapper">
 
+    <!--
+      ⚠️ 重要约定：course_review 表**没有 deleted 列**。
+         评价数据采用物理删除（若用逻辑删除，selection_id 唯一键会阻挡学生
+         删除后重新提交），因此实体 CourseReview 也没有继承带 @TableLogic 的 BaseEntity。
+
+         本文件中所有以 course_review 为主表的语句**都不能**追加 deleted = 0，
+         否则会抛 "Unknown column 'r.deleted' in 'where clause'"。
+         被它 JOIN 的表（course / student / teacher / sys_user / semester 等）有该列，
+         需要正常过滤，不要一起删掉。
+    -->
+
     <!-- 评价基础列（含课程、教师、学期、学生信息） -->
     <sql id="reviewColumns">
         r.id, r.selection_id, r.student_id, r.course_id, r.teacher_id, r.semester_id,
@@ -174,8 +185,8 @@
         <include refid="reviewColumns"/>
         FROM course_review r
         <include refid="reviewJoins"/>
-        WHERE r.deleted = 0
-        AND r.course_id = #{courseId}
+        <!-- course_review 无 deleted 列（评价采用物理删除），此处不可追加逻辑删除条件 -->
+        WHERE r.course_id = #{courseId}
         AND r.status = 2
         ORDER BY r.average_score DESC, r.submit_time DESC
     </select>
@@ -187,10 +198,13 @@
         IFNULL(ROUND(AVG(CASE WHEN r.status &lt;&gt; 3 THEN r.average_score END), 1), 0) AS averageScore,
         COUNT(DISTINCT CASE WHEN r.status &lt;&gt; 3 THEN r.course_id END) AS courseCount
         FROM course_review r
-        WHERE r.deleted = 0
-        <if test="semesterId != null">
-            AND r.semester_id = #{semesterId}
-        </if>
+        <!-- course_review 无 deleted 列（评价采用物理删除）；
+             用 <where> 而非 WHERE + 固定条件，避免 semesterId 为空时留下悬空的 WHERE -->
+        <where>
+            <if test="semesterId != null">
+                AND r.semester_id = #{semesterId}
+            </if>
+        </where>
     </select>
 
     <select id="countFinishedStudents" resultType="java.lang.Long">
@@ -204,8 +218,8 @@
     <select id="countBySelectionId" resultType="java.lang.Long">
         SELECT COUNT(*)
         FROM course_review
-        WHERE deleted = 0
-        AND selection_id = #{selectionId}
+        <!-- course_review 无 deleted 列（评价采用物理删除） -->
+        WHERE selection_id = #{selectionId}
     </select>
 
 </mapper>
