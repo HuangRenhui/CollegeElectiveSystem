@@ -25,11 +25,13 @@
 <script setup>
 import { onMounted } from 'vue'
 import { useAppStore } from '@/store/modules/app'
+import { useUserStore } from '@/store/modules/user'
 import { getCurrentSemester, listNotices } from '@/api/common'
 import SidebarMenu from './components/SidebarMenu.vue'
 import NavBar from './components/NavBar.vue'
 
 const appStore = useAppStore()
+const userStore = useUserStore()
 
 onMounted(async () => {
   try {
@@ -38,8 +40,13 @@ onMounted(async () => {
   } catch {
     // 忽略：可能尚未设置当前学期
   }
+
+  // 先确定「已读记录」的归属用户，再写入公告列表（setNotices 会按列表裁剪已读记录）
+  appStore.initNoticeRead(userStore.userInfo?.userId ?? userStore.userInfo?.username)
+
   try {
-    const { data } = await listNotices({ limit: 10 })
+    // limit 取后端允许的最大值（50），保证铃铛未读角标与「公共信息」页面看到的是同一份全量列表
+    const { data } = await listNotices({ limit: 50 })
     appStore.setNotices(data)
   } catch {
     // 忽略公告加载失败

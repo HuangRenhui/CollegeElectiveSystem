@@ -18,20 +18,52 @@
         {{ appStore.currentSemester.semesterName }}
       </el-tag>
 
-      <el-badge :value="appStore.notices.length" :hidden="!appStore.notices.length" class="navbar__notice">
-        <el-popover placement="bottom-end" :width="360" trigger="click">
+      <!-- 公告入口仅学生 / 教师需要：管理员是公告发布方，用「公告管理」，不展示铃铛 -->
+      <el-badge
+        v-if="!userStore.isAdmin"
+        :value="appStore.unreadNoticeCount"
+        :max="99"
+        :hidden="!appStore.unreadNoticeCount"
+        class="navbar__notice"
+      >
+        <el-popover v-model:visible="noticePopoverVisible" placement="bottom-end" :width="380" trigger="click">
           <template #reference>
             <el-icon :size="19"><Bell /></el-icon>
           </template>
           <div class="notice-panel">
-            <div class="notice-panel__title">最新公告</div>
+            <div class="notice-panel__title">
+              <span>公告</span>
+              <el-button
+                v-if="appStore.unreadNoticeCount"
+                link
+                type="primary"
+                size="small"
+                @click="markAllRead"
+              >
+                全部已读
+              </el-button>
+            </div>
             <el-empty v-if="!appStore.notices.length" description="暂无公告" :image-size="70" />
             <ul v-else class="notice-panel__list">
-              <li v-for="notice in appStore.notices" :key="notice.id" @click="openNotice(notice)">
+              <li
+                v-for="notice in appStore.notices"
+                :key="notice.id"
+                :class="{ 'is-read': appStore.isNoticeRead(notice.id) }"
+                @click="openNotice(notice)"
+              >
+                <span
+                  class="notice-panel__dot"
+                  :class="{ 'is-unread': !appStore.isNoticeRead(notice.id) }"
+                />
                 <span class="notice-panel__item-title">{{ notice.title }}</span>
                 <span class="text-muted">{{ formatDate(notice.publishTime) }}</span>
               </li>
             </ul>
+            <div class="notice-panel__footer">
+              <el-button link type="primary" size="small" @click="goNoticePage">
+                查看全部（公共信息）
+              </el-button>
+            </div>
           </div>
         </el-popover>
       </el-badge>
@@ -98,15 +130,26 @@ import dayjs from 'dayjs'
 import { useAppStore } from '@/store/modules/app'
 import { useUserStore } from '@/store/modules/user'
 import { changePassword } from '@/api/auth'
+import { getNoticeDetail } from '@/api/common'
 
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const userStore = useUserStore()
 
-const breadcrumbs = computed(() =>
-  route.matched.filter((item) => item.meta?.title && item.path !== '/')
-)
+/**
+ * 面包屑：侧边栏已改为一级平铺，分组层级（学生服务 / 教师工作台 / 教务管理）
+ * 在菜单里已不存在，因此这里只展示「首页 + 当前页面」，不再展示中间分组。
+ * 当前页本身就是「首页」时也不重复展示。
+ */
+const breadcrumbs = computed(() => {
+  const matched = route.matched.filter((item) => item.meta?.title && item.path !== '/')
+  const current = matched[matched.length - 1]
+  if (!current || current.meta.title === '首页') {
+    return []
+  }
+  return [current]
+})
 
 const roleText = computed(() => {
   const map = { STUDENT: '学生', TEACHER: '教师', ADMIN: '管理员' }
@@ -161,11 +204,39 @@ async function submitPassword() {
 
 // ---------------------------- 公告 ----------------------------
 const noticeDialogVisible = ref(false)
+const noticePopoverVisible = ref(false)
 const currentNotice = ref({})
 
-function openNotice(notice) {
-  currentNotice.value = notice
+/**
+ * 打开公告详情：先落地「已读」（角标立即减少），再拉取最新详情。
+ * 详情接口会累加浏览量，失败时降级展示列表里已有的内容。
+ */
+async function openNotice(notice) {
+  if (!notice?.id) return
+  appStore.markNoticeRead(notice.id)
+  noticePopoverVisible.value = false
+  currentNotice.value = { ...notice }
   noticeDialogVisible.value = true
+
+  try {
+    const { data } = await getNoticeDetail(notice.id)
+    if (data) {
+      currentNotice.value = data
+    }
+  } catch {
+    // 忽略：列表数据已可展示
+  }
+}
+
+/** 一次性把当前可见公告全部标记为已读 */
+function markAllRead() {
+  appStore.markAllNoticesRead()
+}
+
+/** 跳到「公共信息」页面查看全部历史公告 */
+function goNoticePage() {
+  noticePopoverVisible.value = false
+  router.push('/info/notices')
 }
 
 function handleCommand(command) {
@@ -250,6 +321,9 @@ function formatDate(value) {
 
 .notice-panel {
   &__title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     font-weight: 600;
     margin-bottom: 10px;
     padding-bottom: 8px;
@@ -265,8 +339,9 @@ function formatDate(value) {
 
     li {
       display: flex;
+      align-items: center;
       justify-content: space-between;
-      gap: 12px;
+      gap: 8px;
       padding: 9px 4px;
       border-bottom: 1px dashed #f0f0f0;
       cursor: pointer;
@@ -275,6 +350,23 @@ function formatDate(value) {
       &:hover {
         background: #f5f7fa;
       }
+
+      // 已读条目弱化显示
+      &.is-read .notice-panel__item-title {
+        color: #909399;
+      }
+    }
+  }
+
+  &__dot {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: transparent;
+
+    &.is-unread {
+      background: $danger-color;
     }
   }
 
@@ -283,6 +375,13 @@ function formatDate(value) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  &__footer {
+    display: flex;
+    justify-content: center;
+    padding-top: 8px;
+    border-top: 1px solid #ebeef5;
   }
 }
 </style>

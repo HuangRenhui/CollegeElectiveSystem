@@ -140,6 +140,14 @@ export const constantRoutes = [
         meta: { title: '数据概览', icon: 'DataLine', roles: ['ADMIN'] }
       },
       {
+        // 选课时间（开放 / 截止）配置在本页的学期编辑弹窗里，
+        // 因此提到第 2 位并改名为「学期与选课设置」，便于管理员快速找到
+        path: 'semesters',
+        name: 'AdminSemesters',
+        component: () => import('@/views/admin/semesters.vue'),
+        meta: { title: '学期与选课设置', icon: 'Timer', roles: ['ADMIN'] }
+      },
+      {
         path: 'courses',
         name: 'AdminCourses',
         component: () => import('@/views/admin/courses.vue'),
@@ -164,12 +172,6 @@ export const constantRoutes = [
         meta: { title: '基础信息', icon: 'OfficeBuilding', roles: ['ADMIN'] }
       },
       {
-        path: 'semesters',
-        name: 'AdminSemesters',
-        component: () => import('@/views/admin/semesters.vue'),
-        meta: { title: '学期管理', icon: 'Clock', roles: ['ADMIN'] }
-      },
-      {
         path: 'notices',
         name: 'AdminNotices',
         component: () => import('@/views/admin/notices.vue'),
@@ -189,12 +191,68 @@ export const constantRoutes = [
       }
     ]
   },
+  // ---------------------------- 公共信息（学生 / 教师） ----------------------------
+  // 放在路由表末尾：侧边栏按路由顺序平铺渲染，因此它固定出现在菜单最下方。
+  // 仅学生与教师可见：管理员是公告的发布方，使用「公告管理」，无需再查看此页。
+  {
+    path: '/info',
+    component: Layout,
+    redirect: '/info/notices',
+    meta: { title: '公共信息', icon: 'Bell', roles: ['STUDENT', 'TEACHER'] },
+    children: [
+      {
+        path: 'notices',
+        name: 'PublicNotices',
+        component: () => import('@/views/common/notices.vue'),
+        meta: { title: '公共信息', icon: 'Bell', roles: ['STUDENT', 'TEACHER'] }
+      }
+    ]
+  },
   {
     path: '/:pathMatch(.*)*',
     redirect: '/404',
     meta: { hidden: true }
   }
 ]
+
+/**
+ * 预取全部路由组件。
+ *
+ * Vue Router 的导航顺序是「先加载目标页面的异步组件，再更新地址栏」，
+ * 所以开发环境下第一次点击某个菜单时，页面 chunk 需要现编译，期间地址栏与
+ * 内容都不会变化，看起来像「点了没反应」，等模块加载完再点一次才生效。
+ * 这里在应用启动后利用浏览器空闲时间预热所有页面 chunk，让首次点击即时生效。
+ */
+export function prefetchRouteComponents() {
+  const loaders = []
+
+  const collect = (routes) => {
+    routes.forEach((item) => {
+      if (typeof item.component === 'function') {
+        loaders.push(item.component)
+      }
+      if (Array.isArray(item.children) && item.children.length) {
+        collect(item.children)
+      }
+    })
+  }
+  collect(constantRoutes)
+
+  const run = () => {
+    loaders.forEach((load) => {
+      // 预取失败不影响正常使用（真正跳转时 Vue Router 还会再加载一次）
+      Promise.resolve()
+        .then(() => load())
+        .catch(() => {})
+    })
+  }
+
+  if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(run, { timeout: 3000 })
+  } else {
+    window.setTimeout(run, 1000)
+  }
+}
 
 const router = createRouter({
   history: createWebHistory(),

@@ -9,41 +9,18 @@
       <el-menu
         :default-active="activeMenu"
         :collapse="appStore.sidebarCollapsed"
-        :unique-opened="true"
         background-color="#1f2d3d"
         text-color="#bfcbd9"
         active-text-color="#ffffff"
         router
       >
-        <template v-for="item in menuRoutes" :key="item.path">
-          <!-- 单个子菜单：直接渲染为菜单项 -->
-          <el-menu-item v-if="item.children.length === 1" :index="resolvePath(item.path, item.children[0].path)">
-            <el-icon>
-              <component :is="item.children[0].meta.icon || item.meta.icon || 'Menu'" />
-            </el-icon>
-            <template #title>{{ item.children[0].meta.title }}</template>
-          </el-menu-item>
-
-          <!-- 多个子菜单：渲染为折叠组 -->
-          <el-sub-menu v-else :index="item.path">
-            <template #title>
-              <el-icon>
-                <component :is="item.meta.icon || 'Menu'" />
-              </el-icon>
-              <span>{{ item.meta.title }}</span>
-            </template>
-            <el-menu-item
-              v-for="child in item.children"
-              :key="child.path"
-              :index="resolvePath(item.path, child.path)"
-            >
-              <el-icon>
-                <component :is="child.meta.icon || 'Menu'" />
-              </el-icon>
-              <template #title>{{ child.meta.title }}</template>
-            </el-menu-item>
-          </el-sub-menu>
-        </template>
+        <!-- 所有页面同级平铺（不分组），顺序与路由表一致 -->
+        <el-menu-item v-for="item in menuItems" :key="item.path" :index="item.path">
+          <el-icon>
+            <component :is="item.icon" />
+          </el-icon>
+          <template #title>{{ item.title }}</template>
+        </el-menu-item>
       </el-menu>
     </el-scrollbar>
   </div>
@@ -64,39 +41,43 @@ const userStore = useUserStore()
 const activeMenu = computed(() => route.meta?.activeMenu || route.path)
 
 /**
- * 依据角色过滤出可见的菜单路由。
+ * 侧边栏菜单项：把路由表「拍平」成一级列表。
+ *
+ * 说明：本项目页面数量不多，分组会导致「先展开分组、再点子项」两次点击，
+ * 因此这里不再渲染 el-sub-menu，所有可见页面同级平铺。
+ * 顺序即路由表顺序，公共信息在路由表末尾，故固定显示在菜单最下方。
  */
-const menuRoutes = computed(() => {
+const menuItems = computed(() => {
   const role = userStore.role
   const result = []
 
-  for (const item of constantRoutes) {
-    if (item.meta?.hidden || !item.children || item.children.length === 0) {
-      continue
-    }
-    if (item.path === '/') {
-      continue
-    }
-
-    const children = item.children.filter((child) => {
-      if (child.meta?.hidden) {
-        return false
-      }
-      const roles = child.meta?.roles
-      return !Array.isArray(roles) || roles.length === 0 || roles.includes(role)
-    })
-
-    if (children.length === 0) {
+  for (const parent of constantRoutes) {
+    // 跳过隐藏路由、首页分组（首页与个人中心不在侧边栏展示）以及没有子路由的节点
+    if (parent.meta?.hidden || parent.path === '/' || !Array.isArray(parent.children)) {
       continue
     }
 
-    const parentRoles = item.meta?.roles
+    const parentRoles = parent.meta?.roles
     if (Array.isArray(parentRoles) && parentRoles.length > 0 && !parentRoles.includes(role)) {
       continue
     }
 
-    result.push({ ...item, children })
+    for (const child of parent.children) {
+      if (child.meta?.hidden) {
+        continue
+      }
+      const roles = child.meta?.roles
+      if (Array.isArray(roles) && roles.length > 0 && !roles.includes(role)) {
+        continue
+      }
+      result.push({
+        path: resolvePath(parent.path, child.path),
+        title: child.meta?.title,
+        icon: child.meta?.icon || parent.meta?.icon || 'Menu'
+      })
+    }
   }
+
   return result
 })
 
