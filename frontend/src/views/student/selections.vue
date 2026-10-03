@@ -24,6 +24,9 @@
         <el-table-column type="index" label="#" width="56" />
         <el-table-column prop="courseCode" label="课程编号" width="110" />
         <el-table-column prop="courseName" label="课程名称" min-width="160" show-overflow-tooltip />
+        <el-table-column label="学期" min-width="190" show-overflow-tooltip>
+          <template #default="{ row }">{{ semesterText(row.semesterId) }}</template>
+        </el-table-column>
         <el-table-column label="类型" width="90">
           <template #default="{ row }">
             <el-tag :type="courseTypeTag(row.courseType)" size="small">{{ courseTypeText(row.courseType) }}</el-tag>
@@ -114,6 +117,25 @@ const totalCredit = computed(() =>
     .filter((item) => item.status === 1 || item.status === 2)
     .reduce((sum, item) => sum + Number(item.credit || 0), 0)
 )
+
+/**
+ * semesterId → 学期名称。
+ *
+ * 选课记录接口只返回 semesterId，不带学期名；
+ * 这里复用页面已经加载的学期下拉数据做映射，避免为了一列去改后端接口。
+ */
+const semesterNameMap = computed(() => {
+  const map = {}
+  semesters.value.forEach((item) => {
+    map[item.id] = item.semesterName
+  })
+  return map
+})
+
+function semesterText(semesterId) {
+  if (semesterId === null || semesterId === undefined) return '-'
+  return semesterNameMap.value[semesterId] || `学期 #${semesterId}`
+}
 
 onMounted(async () => {
   try {

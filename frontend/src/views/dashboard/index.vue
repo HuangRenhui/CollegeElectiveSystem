@@ -180,6 +180,25 @@
               </template>
               <div>{{ selection.tipText.value }}</div>
             </el-alert>
+
+            <!-- 选课时间直接显示在这里，省得再跳到「学期与选课设置」页面查看 -->
+            <div class="switch-time">
+              <span class="text-muted">选课时间</span>
+              <template v-if="appStore.currentSemester?.selectStartTime || appStore.currentSemester?.selectEndTime">
+                <el-tag size="small" effect="plain">
+                  {{ formatDateTime(appStore.currentSemester.selectStartTime) }}
+                </el-tag>
+                <span class="switch-time__sep">至</span>
+                <el-tag size="small" effect="plain">
+                  {{ formatDateTime(appStore.currentSemester.selectEndTime) }}
+                </el-tag>
+              </template>
+              <el-tag v-else size="small" type="info" effect="plain">未配置</el-tag>
+              <el-button link type="primary" size="small" @click="$router.push('/admin/semesters')">
+                去修改
+              </el-button>
+            </div>
+
             <el-space wrap size="large">
               <el-tag :type="switchOn ? 'success' : 'danger'" size="large">
                 选课通道：{{ switchOn ? '已开启' : '已关闭' }}
@@ -264,6 +283,11 @@ const userStore = useUserStore()
 
 /** 学生选课窗口倒计时（仅学生角色使用） */
 const selection = useSelectionCountdown(computed(() => appStore.currentSemester))
+
+/** 后端返回的时间形如 2026-08-20 08:00:00，这里截到分钟展示 */
+function formatDateTime(value) {
+  return value ? String(value).slice(0, 16) : '-'
+}
 
 const loading = ref(false)
 const preloading = ref(false)
@@ -464,6 +488,23 @@ async function doSync() {
 
 .mb-16 {
   margin-bottom: 16px;
+}
+
+/* 选课时间展示行 */
+.switch-time {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: #f8f9fb;
+  border-radius: 4px;
+  font-size: 13px;
+
+  &__sep {
+    color: #909399;
+  }
 }
 
 .stat-card {
