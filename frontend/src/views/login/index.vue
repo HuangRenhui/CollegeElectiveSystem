@@ -119,11 +119,49 @@ async function handleLogin() {
   try {
     await userStore.login(form)
     ElMessage.success('登录成功，正在进入系统…')
-    const redirect = route.query.redirect
-    router.replace(redirect ? String(redirect) : userStore.homePath)
+    router.replace(resolveRedirect())
   } finally {
     loading.value = false
   }
+}
+
+/**
+ * 计算登录后的跳转地址。
+ *
+ * 不能直接信任 ?redirect=：它可能是上一个账号（或上一次会话）留下的地址，
+ * 换角色登录时该地址属于新角色无权访问的页面，会在登录成功后立刻跳到 403。
+ * 因此这里按当前角色校验一次，不通过就回退到该角色的首页。
+ */
+function resolveRedirect() {
+  const redirect = route.query.redirect ? String(route.query.redirect) : ''
+  if (!redirect || !isPathAllowed(redirect)) {
+    return userStore.homePath
+  }
+  return redirect
+}
+
+/**
+ * 依据路由表判断目标地址对当前角色是否开放。
+ *
+ * 与 router/guard.js 保持同一套判定口径：取匹配链上最靠下的一段 roles 配置。
+ */
+function isPathAllowed(path) {
+  const role = userStore.role
+  if (!role) return false
+
+  const matched = router.resolve(path).matched || []
+  // 未匹配到路由（落到 catch-all 404）时视为不可用
+  if (!matched.length || matched.some((item) => item.path.includes('pathMatch'))) {
+    return false
+  }
+
+  for (let i = matched.length - 1; i >= 0; i--) {
+    const roles = matched[i].meta?.roles
+    if (Array.isArray(roles) && roles.length > 0) {
+      return roles.includes(role)
+    }
+  }
+  return true
 }
 </script>
 

@@ -44,6 +44,10 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 5174,
       open: false,
+      // 启动时预热页面模块，避免开发环境下首次打开某个页面时现编译造成「点击无反应」
+      warmup: {
+        clientFiles: ['./src/views/**/*.vue', './src/layout/**/*.vue']
+      },
       proxy: {
         '/api': {
           target,

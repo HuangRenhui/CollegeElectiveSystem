@@ -4,7 +4,7 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import ElementPlus from 'element-plus'
 
 import App from './App.vue'
-import router from './router'
+import router, { prefetchRouteComponents } from './router'
 import './router/guard'
 import pinia from './store'
 
@@ -23,3 +23,6 @@ app.use(router)
 app.use(ElementPlus, { locale: zhCn, size: 'default' })
 
 app.mount('#app')
+
+// 启动后预热各页面 chunk，避免首次点击左侧菜单时因按需加载而「看起来没反应」
+prefetchRouteComponents()
