@@ -242,11 +242,11 @@
             </el-table-column>
             <el-table-column label="操作" width="90" fixed="right">
               <template #default="{ row }">
-                <el-button
+          <el-button
                   v-if="row.status === 1"
                   link
                   type="danger"
-                  :loading="operatingId === `drop-${row.courseId}`"
+                  disabled
                   @click="handleAdminDrop(row)"
                 >
                   退选
@@ -310,8 +310,7 @@
                 <el-button
                   link
                   type="primary"
-                  :disabled="row.selected"
-                  :loading="operatingId === `add-${row.id}`"
+                  disabled
                   @click="handleAdminAdd(row)"
                 >
                   代选
@@ -348,9 +347,9 @@ import { Plus } from '@element-plus/icons-vue'
 import {
   pageStudents, createStudent, updateStudent, deleteStudent, updateStudentStatus,
   listDepartments, listMajors, resetUserPassword,
-  listStudentSelections, addSelectionForStudent, removeSelectionForStudent
+  listStudentSelections, addSelectionForStudent, removeSelectionForStudent,
+  pageCourses
 } from '@/api/admin'
-import { listCourses } from '@/api/student'
 import { getCurrentSemester } from '@/api/common'
 import {
   genderText, userStatusText, userStatusTag, GENDER_OPTIONS,
@@ -625,7 +624,9 @@ async function loadMySelections() {
 async function loadAvailableCourses() {
   courseLoading.value = true
   try {
-    const { data } = await listCourses({
+    // 用管理员课程接口 /admin/courses：参数与返回字段和 /student/courses 一致，
+    // 但 /student/courses 需要「已绑定学生信息」，管理员调用会返回 2007 当前身份无法执行该操作
+    const { data } = await pageCourses({
       ...courseQuery,
       courseName: courseKeyword.value,
       deptId: courseDeptId.value,
@@ -651,6 +652,8 @@ function isFull(course) {
  * 代选课程。先请求冲突预检，有冲突则要求管理员二次确认后再提交。
  */
 async function handleAdminAdd(course) {
+  ElMessage.warning('教务代选尚未实现，请学生自行选课')
+  return
   let reason
   try {
     const result = await ElMessageBox.prompt(
@@ -687,6 +690,8 @@ async function handleAdminAdd(course) {
  * 代退选。已录入成绩的课程不可退选。
  */
 async function handleAdminDrop(row) {
+  ElMessage.warning('教务代退选尚未实现，请学生自行退课')
+  return
   if (row.score !== null && row.score !== undefined) {
     ElMessage.warning('该课程已录入成绩，无法代退选')
     return

@@ -166,7 +166,6 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { listCourses, getCourseDetail, selectCourse, checkConflict } from '@/api/student'
-import { listDepartments } from '@/api/admin'
 import { getCurrentSemester } from '@/api/common'
 import { useAppStore } from '@/store/modules/app'
 import { useSelectionCountdown } from '@/utils/useSelectionCountdown'
@@ -182,9 +181,18 @@ const loading = ref(false)
 const loadingId = ref(null)
 const list = ref([])
 const total = ref(0)
-const departments = ref([])
 const creditLimit = ref(0)
 const selectedCredit = ref(0)
+
+/**
+ * 开课院系筛选项。
+ *
+ * 直接从课程列表里累积去重生成，不再调用 /admin/departments——
+ * 该接口仅管理员可用，学生调用会返回「没有操作权限」（登录后进入本页即弹红条）。
+ * 累积而非每次重建，避免筛选中某个院系后选项被裁剪掉、无法切换。
+ */
+const departmentMap = reactive({})
+const departments = computed(() => Object.values(departmentMap))
 
 /** 当前学期（优先取全局缓存，缺失时回退到接口） */
 const semester = ref(appStore.currentSemester)
@@ -218,7 +226,7 @@ const detailVisible = ref(false)
 const detail = reactive({})
 
 onMounted(async () => {
-  await Promise.all([loadData(), loadDepartments(), loadSemester()])
+  await Promise.all([loadData(), loadSemester()])
 })
 
 async function loadSemester() {
@@ -252,20 +260,21 @@ async function loadData() {
     selectedCredit.value = list.value
       .filter((c) => c.selected)
       .reduce((sum, c) => sum + Number(c.credit || 0), 0)
+
+    // 顺带累积「开课院系」筛选项（课程列表已带 deptId / deptName）
+    list.value.forEach((course) => {
+      if (course.deptId != null && !departmentMap[course.deptId]) {
+        departmentMap[course.deptId] = {
+          id: course.deptId,
+          deptName: course.deptName || '未知院系'
+        }
+      }
+    })
   } catch {
     list.value = []
     total.value = 0
   } finally {
     loading.value = false
-  }
-}
-
-async function loadDepartments() {
-  try {
-    const { data } = await listDepartments({})
-    departments.value = data || []
-  } catch {
-    departments.value = []
   }
 }
 
@@ -382,15 +391,23 @@ async function handleSelect(course) {
  * 后端 ConflictVO 将时间拆分为节次与周次两个字段，此处拼接后展示，
  * 便于学生判断冲突的具体时间段是否真的无法协调。
  */
+function escapeHtml(text) {
+  return String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
 function buildConflictHtml(course, conflicts) {
   const lines = conflicts
     .map((item) => {
       const timeText = [item.sectionText, item.weekText].filter(Boolean).join(' ')
       const name = item.conflictCourseName || item.courseName || '已选课程'
-      return `《${name}》${timeText ? ' ' + timeText : ''}`
+      return `《${escapeHtml(name)}》${timeText ? ' ' + escapeHtml(timeText) : ''}`
     })
     .join('<br/>')
-  return `<p>《${course.courseName}》与以下已选课程上课时间重叠：</p>
+  return `<p>《${escapeHtml(course.courseName)}》与以下已选课程上课时间重叠：</p>
     <p style="color:#f56c6c;line-height:1.9">${lines}</p>
     <p style="color:#909399;font-size:12px">继续选课可能导致无法正常上课，请确认后再操作。</p>`
 }

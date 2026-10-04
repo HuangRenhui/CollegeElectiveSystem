@@ -18,16 +18,24 @@
         <div class="course-info__actions">
           <el-tag type="info" effect="plain">{{ course.credit }} 学分</el-tag>
           <el-tag type="success" effect="plain">已选 {{ sheet.length }} 人</el-tag>
-          <el-button type="primary" :loading="saving" @click="handleSave">
+          <el-button type="primary" :loading="saving" disabled>
             <el-icon><DocumentAdd /></el-icon>保存草稿
           </el-button>
-          <el-button type="success" :loading="publishing" @click="handlePublish">
+          <el-button type="success" :loading="publishing" disabled>
             <el-icon><Promotion /></el-icon>发布成绩
           </el-button>
-          <el-button type="warning" plain @click="handleRevoke">撤回发布</el-button>
+          <el-button type="warning" plain disabled>撤回发布</el-button>
         </div>
       </div>
 
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        style="margin-top: 14px"
+        title="成绩录入尚未开放"
+        description="查询成绩单可用。保存草稿、发布与撤回接口尚未实现，请勿将本页当作已可录入。"
+      />
       <el-alert
         type="info"
         :closable="false"
