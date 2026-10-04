@@ -7,6 +7,7 @@
     "pages/review/detail/index",
     "pages/timetable/index",
     "pages/grade/index",
+    "pages/notice/index",
     "pages/mine/index"
   ],
   "window": {
@@ -33,6 +34,10 @@
       {
         "pagePath": "pages/grade/index",
         "text": "成绩"
+      },
+      {
+        "pagePath": "pages/notice/index",
+        "text": "公共信息"
       },
       {
         "pagePath": "pages/mine/index",

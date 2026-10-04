@@ -13,9 +13,14 @@ function getCurrentSemester() {
   return get('/common/semesters/current')
 }
 
-/** 公告列表 */
+/** 公告列表（后端按当前登录角色过滤：ALL + 本角色） */
 function listNotices(data) {
   return get('/common/notices', data)
 }
 
-module.exports = { listSemesterOptions, getCurrentSemester, listNotices }
+/** 公告详情（后端会累加浏览量） */
+function getNoticeDetail(id) {
+  return get('/common/notices/' + id)
+}
+
+module.exports = { listSemesterOptions, getCurrentSemester, listNotices, getNoticeDetail }

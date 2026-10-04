@@ -115,6 +115,22 @@ function weekTypeText(value) {
   return WEEK_TYPE_MAP[value] || '每周'
 }
 
+// ---------------------------- 公告 ----------------------------
+/** 公告类型（与 Web 端 utils/dict.js 保持一致） */
+const NOTICE_TYPE_MAP = {
+  SYSTEM: { text: '系统', theme: 'info' },
+  SELECTION: { text: '选课', theme: 'success' },
+  EXAM: { text: '考试', theme: 'warning' }
+}
+
+function noticeTypeText(value) {
+  return (NOTICE_TYPE_MAP[value] || NOTICE_TYPE_MAP.SYSTEM).text
+}
+
+function noticeTypeTheme(value) {
+  return (NOTICE_TYPE_MAP[value] || NOTICE_TYPE_MAP.SYSTEM).theme
+}
+
 module.exports = {
   REVIEW_STATUS_MAP,
   reviewStatusText,
@@ -132,5 +148,8 @@ module.exports = {
   DAY_LABELS,
   SECTION_TIMES,
   WEEK_TYPE_MAP,
-  weekTypeText
+  weekTypeText,
+  NOTICE_TYPE_MAP,
+  noticeTypeText,
+  noticeTypeTheme
 }

@@ -1,6 +1,6 @@
 # 学生端微信小程序
 
-高校选修课管理系统的移动端，面向**学生**开放教学评价、课表查询与成绩查询。
+高校选修课管理系统的移动端，面向**学生**开放教学评价、课表查询、成绩查询与公告查看。
 
 > ℹ️ 完整教务管理（课程、排课、学生/教师维护、成绩录入、评价审核等）请使用网页端。
 
@@ -60,7 +60,7 @@ miniprogram/
 │   └── dict.js             # 字典与工具方法（与 Web 端语义一致）
 ├── api/
 │   ├── auth.js             # 登录 / 退出 / 用户信息
-│   ├── common.js           # 学期、公告
+│   ├── common.js           # 学期、公告列表与公告详情
 │   ├── review.js           # 教学评价（7 个接口）
 │   └── student.js          # 课表、成绩
 └── pages/
@@ -72,8 +72,11 @@ miniprogram/
     │   └── detail/         # 课程评价汇总与匿名明细
     ├── timetable/          # 我的课表（按星期分组，tabBar）
     ├── grade/              # 我的成绩（tabBar）
+    ├── notice/             # 公共信息（公告列表，tabBar）
     └── mine/               # 个人中心（tabBar）
 ```
+
+> 底部 tabBar 共 5 项：**待评价 / 课表 / 成绩 / 公共信息 / 我的**。
 
 ---
 
@@ -103,9 +106,12 @@ miniprogram/
 | 模块 | 接口数 | 说明 |
 | --- | --- | --- |
 | 认证 | 4 | `/auth/login`、`/auth/logout`、`/auth/info`、`/auth/password` |
-| 公共 | 3 | `/common/semesters`、`/common/semesters/current`、`/common/notices` |
+| 公共 | 4 | `/common/semesters`、`/common/semesters/current`、`/common/notices`、`/common/notices/{id}` |
 | 教学评价 | 7 | `/student/reviews/**`、`/student/courses/{id}/review-summary` |
 | 课表成绩 | 4 | `/student/timetable`、`/student/selections`、`/student/grades/**` |
+
+> 公告接口由后端按登录角色过滤（`target_role = ALL` 或本角色），
+> 小程序端无需额外处理：学生只会拿到面向 `ALL` 与 `STUDENT` 的公告。
 
 ---
 

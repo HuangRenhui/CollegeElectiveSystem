@@ -1,0 +1,51 @@
+<view class="page-container">
+  <!-- 概览 + 操作 -->
+  <view class="card overview">
+    <view class="overview__title">公共信息</view>
+    <view class="overview__desc text-muted">
+      当前账号可见 {{notices.length}} 条{{onlyUnread ? '未读' : ''}}公告，未读 {{unreadCount}} 条
+    </view>
+    <view class="overview__actions">
+      <view class="action" bindtap="toggleFilter">{{onlyUnread ? '显示全部' : '仅看未读'}}</view>
+      <view class="action action--primary" bindtap="markAllRead">全部标为已读</view>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty">加载中...</view>
+
+  <block wx:elif="{{notices.length > 0}}">
+    <view
+      class="card item"
+      wx:for="{{notices}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="handleTap"
+    >
+      <view class="item__head">
+        <view class="item__title">
+          <text wx:if="{{!item.read}}" class="item__dot"></text>{{item.title}}
+        </view>
+        <view class="item__tags">
+          <view wx:if="{{item.topFlag}}" class="tag tag--danger">置顶</view>
+          <view class="tag tag--{{item.typeTheme}}">{{item.typeText}}</view>
+        </view>
+      </view>
+
+      <view class="item__meta text-muted">
+        <text>{{item.publisher}}</text>
+        <text class="dot">·</text>
+        <text>{{item.publishTime}}</text>
+        <text class="dot">·</text>
+        <text>浏览 {{item.viewCount}}</text>
+      </view>
+
+      <view wx:if="{{expandedId === item.id}}" class="item__content">{{item.content}}</view>
+      <view wx:else class="item__more text-muted">点击查看详情</view>
+    </view>
+  </block>
+
+  <view wx:else class="empty">
+    <view class="empty__icon">📢</view>
+    <view>{{onlyUnread ? '暂无未读公告' : '暂无公告'}}</view>
+  </view>
+</view>
