@@ -33,3 +33,7 @@
 SOURCE ../backend/src/main/resources/db/schema.sql;
 SOURCE ../backend/src/main/resources/db/data.sql;
 SOURCE ../backend/src/main/resources/db/demo-data.sql;
+-- 增量演示数据：为「当前学期」补充成绩与教学评价，并给教师 6/7/8 补当前学期课程。
+-- 说明：三个评价页面默认只筛当前学期，而 demo-data.sql 的评价都在历史学期，
+--       不引入本脚本会导致评价相关页面默认视图为空。脚本可重复执行。
+SOURCE seed-extra-demo.sql;
