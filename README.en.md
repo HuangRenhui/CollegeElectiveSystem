@@ -44,18 +44,18 @@ scheduling, grading, course evaluation, notices and academic statistics. It focu
 
 | Role | Capabilities |
 | --- | --- |
-| **STUDENT** | Browse courses, enroll / withdraw, view personal timetable, view grades & GPA, submit course evaluations |
-| **TEACHER** | View teaching courses, view student rosters, input / publish / revoke grades, view teaching timetable, view evaluations of own courses |
+| **STUDENT** | Browse courses, enroll / withdraw, view personal timetable, view grades & GPA, submit course evaluations, read notices |
+| **TEACHER** | View teaching courses, view student rosters, input / publish / revoke grades, view teaching timetable, view evaluations of own courses, read notices |
 | **ADMIN** | Course & schedule management, student/teacher management, departments/majors/classrooms, semesters & selection windows, notices, operation logs, selection switch & cache preloading, evaluation moderation & statistics |
 
 ---
 
 ## Current Status
 
-The framework, infrastructure and most business modules are complete. The **enrollment** and
-**grade** modules are **partially implemented** — the enrollment main flow and all query methods
-work; withdrawal, count sync and grade input/publishing are still pending. Their API contracts,
-data models, frontend pages and infrastructure are all in place.
+The framework, infrastructure and most business modules are complete. The **enrollment** module's
+service methods are **fully implemented** (only admin-assisted enrollment remains); the **grade**
+module is **partially implemented** — query methods work, grade input / publishing / revoking are
+still pending. Their API contracts, data models, frontend pages and infrastructure are all in place.
 
 | Module | Status | Notes |
 | --- | --- | --- |
@@ -63,7 +63,7 @@ data models, frontend pages and infrastructure are all in place.
 | Course Management | ✅ Ready | Course CRUD, scheduling, conflict checks, statistics |
 | Student / Teacher Management | ✅ Ready | Profile and account management |
 | Base Info / Semester / Notice / Log | ✅ Ready | Full academic administration |
-| **Enrollment** | 🚧 **Core ready** | Enroll (Redis Lua reservation + cache refill + DB rollback), course browsing, conflict pre-check, my selections and cache preload work; withdraw and count sync pending |
+| **Enrollment** | ✅ **Ready** | Enroll / withdraw (Redis Lua reservation + cache refill + DB rollback), course browsing, conflict pre-check, my selections, cache preload and count sync; only admin-assisted enrollment pending |
 | **Grade** | 🚧 **Partial** | Queries work (grade page, input sheet, report); grade input and publishing pending |
 | **Course Evaluation** | ✅ **Ready** | Student submission, teacher view, admin moderation & statistics |
 | **Student Mini Program** | ✅ **Ready** | Evaluation, timetable and grade queries (native WeChat Mini Program) |
@@ -86,7 +86,7 @@ data models, frontend pages and infrastructure are all in place.
 - **High-concurrency safe enrollment** — Redis + Lua performs duplicate-check, capacity check, decrement and record insertion atomically; a failed DB write rolls the reservation back.
 - **Automatic time-conflict detection** — four-dimension overlap check (day of week + sections + weeks + odd/even week).
 - **Cache preloading & refill** — one-click cache preloading, plus `SETNX` lock + spin-wait refill when a capacity key is missing, avoiding a burst of "cache not ready" failures on the first enrollment day.
-- **Consistency fallback** — a scheduled job reconciles DB counts with Redis.
+- **Consistency fallback** — a job runs every 5 minutes, comparing DB counts, Redis capacity and the Redis selected-student set, and fixes any drift it finds.
 - **Credit limit control** — enforces a per-semester total credit cap.
 - **JWT stateless authentication** — tokens stored in a Redis whitelist for server-side revocation and sliding renewal.
 - **Login protection** — consecutive failure lockout, bcrypt password hashing, forced re-login after password change.
@@ -322,6 +322,7 @@ backend APIs — no additional service needs to be deployed.
 | Write Evaluation | Four-dimension star rating (half-star), quick tags, anonymous toggle, confirmation |
 | My Evaluations | Edit and withdraw submitted evaluations |
 | Course Evaluations | Average score, four-dimension bars, anonymous details (infinite scroll) |
+| Public Notices | Notice list with unread dots, "unread only" and "mark all read"; tap to expand |
 | My Timetable | Grouped by weekday with sections, weeks and location |
 | My Grades | Total / earned credits, average score, GPA + detail list |
 | Profile | User info, feature entries, sign out |
