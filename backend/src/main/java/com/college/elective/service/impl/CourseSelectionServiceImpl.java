@@ -8,11 +8,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.college.elective.common.*;
 import com.college.elective.config.ElectiveProperties;
 import com.college.elective.dto.CourseQueryDTO;
-import com.college.elective.entity.Course;
-import com.college.elective.entity.CourseSchedule;
-import com.college.elective.entity.CourseSelection;
-import com.college.elective.entity.Semester;
-import com.college.elective.entity.Student;
+import com.college.elective.entity.*;
 import com.college.elective.mapper.CourseMapper;
 import com.college.elective.mapper.CourseScheduleMapper;
 import com.college.elective.mapper.CourseSelectionMapper;
@@ -44,16 +40,26 @@ import java.util.concurrent.TimeUnit;
  * 选课服务实现。
  *
  * <h3>实现状态</h3>
+ * <p>{@code CourseSelectionService} 接口声明的 <b>11 个方法已全部实现</b>，含教务代选 3 个方法：</p>
  * <ul>
- *   <li><b>已实现</b>：{@link #selectCourse(Long)}（含缓存回源 {@code prepareCourseCache}）、
- *       {@link #dropCourse(Long)}、{@link #syncSelectionCount()}、{@link #checkConflict(Long)}、
- *       {@link #pageAvailableCourses}、{@link #pageMySelections}、
- *       {@link #pageCourseStudents}、{@link #preloadCourseCache}——
- *       {@code CourseSelectionService} 接口声明的方法已<b>全部实现</b>。</li>
- *   <li><b>尚未实现</b>：教务代选能力（查询学生选课记录、代选、代退选）。
- *       这 3 个方法目前<b>连接口都尚未声明</b>，需要「接口 + 实现 + Controller」
- *       三层一起补，详见 {@code docs/待实现功能.md} 第 2.6 节。</li>
+ *   <li><b>学生侧</b>：{@link #selectCourse(Long)}、{@link #dropCourse(Long)}、
+ *       {@link #checkConflict(Long)}、{@link #pageAvailableCourses}、
+ *       {@link #pageMySelections}、{@link #pageCourseStudents}</li>
+ *   <li><b>管理员侧</b>：{@link #pageStudentSelections}、{@link #adminAddSelection}、
+ *       {@link #adminRemoveSelection}</li>
+ *   <li><b>缓存与运维</b>：{@link #preloadCourseCache}、{@link #syncSelectionCount()}
+ *       （含缓存回源私有方法 {@code prepareCourseCache}）</li>
  * </ul>
+ *
+ * <h3>学生选课 vs 教务代选（关键差异）</h3>
+ * <p>两者的<b>数据正确性校验完全一致</b>（课程状态、学分上限、时间冲突、
+ * 容量、重复选课），差异仅在于<b>是否受选课窗口约束</b>：</p>
+ * <ul>
+ *   <li>学生选课：需校验「选课开关（配置 + Redis 动态开关）」与「学期状态 + 时间窗口」。</li>
+ *   <li>教务代选：<b>跳过</b>上述两项——代选用于选课期结束后的补救场景，
+ *       若仍受窗口限制则功能形同虚设；但其余校验一项都不能少。</li>
+ * </ul>
+ * <p>代选写入的记录 {@code select_type = 2}，与正常选课（{@code 1}）区分，便于审计追溯。</p>
  *
  * <h3>学期基准（重要）</h3>
  * <p>学分统计与时间冲突检测<b>一律以「课程所属学期」为基准</b>，而不是「当前学期」。
@@ -64,10 +70,18 @@ import java.util.concurrent.TimeUnit;
  * <ol>
  *   <li><b>Redis 原子预占</b>：通过 Lua 脚本在 Redis 中一次性完成
  *       「查重 → 余量判断 → 扣减 → 写入已选集合」，保证并发安全、防止超选。
- *       脚本已注册为 Bean：{@code selectCourseScript}、{@code dropCourseScript}。</li>
+ *       脚本已注册为 Bean：{@code selectCourseScript}、{@code dropCourseScript}。
+ *       脚本内对容量 Key 与已选集合 Key <b>同步设置 TTL</b>，避免集合永久残留
+ *       导致 {@code SISMEMBER} 误判为「已选过」。</li>
  *   <li><b>时间冲突校验</b>：基于「星期 + 节次区间 + 周次区间 + 单双周」四维判定。</li>
- *   <li><b>落库与回滚</b>：预占成功后写入选课记录，失败需归还 Redis 预占。</li>
- *   <li><b>一致性兜底</b>：定时任务校正数据库计数与 Redis 余量。</li>
+ *   <li><b>两轮校验</b>：事务外先做一遍无锁校验（快速失败、减少锁竞争），
+ *       事务内锁定学生行后再复检一次（防止并发期间的学分/冲突状态变更）。</li>
+ *   <li><b>落库与回滚</b>：预占成功后写入选课记录，失败需归还 Redis 预占，
+ *       避免「Redis 已扣减、数据库无记录」的永久偏差。</li>
+ *   <li><b>一致性兜底</b>：定时任务 {@link #syncSelectionCount()} 校正数据库计数与 Redis 余量。</li>
+ *   <li><b>审计追溯</b>：代选/代退选的 {@code reason} 通过
+ *       {@code @OperationLog(saveParam = true)} 写入 {@code sys_log.request_param}，
+ *       无需在 {@code course_selection} 表额外增加字段。</li>
  * </ol>
  */
 @Slf4j
@@ -106,13 +120,19 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
      */
     private final DefaultRedisScript<Long> dropCourseScript;
 
-    /** 持锁重建容量与已选集合，避免 Java 侧分段写入被并发预占插队 */
+    /**
+     * 持锁重建容量与已选集合，避免 Java 侧分段写入被并发预占插队
+     */
     private final DefaultRedisScript<Long> rebuildCourseCacheScript;
 
-    /** 按锁令牌释放回源短锁，避免误删后来者持有的锁 */
+    /**
+     * 按锁令牌释放回源短锁，避免误删后来者持有的锁
+     */
     private final DefaultRedisScript<Long> releaseLockScript;
 
-    /** 选课落库前锁定学生行，串行化学分与冲突复检 */
+    /**
+     * 选课落库前锁定学生行，串行化学分与冲突复检
+     */
     private final StudentMapper studentMapper;
 
     private final PlatformTransactionManager transactionManager;
@@ -171,6 +191,15 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
      * 回源短锁的持有时长（秒），需大于一次「查库 + 写 Redis」的最长耗时
      */
     private static final long CACHE_LOCK_TTL_SECONDS = 3L;
+    /**
+     * 选课方式：正常选课（学生自主）
+     */
+    private static final int SELECT_TYPE_NORMAL = 1;
+
+    /**
+     * 选课方式：管理员代选
+     */
+    private static final int SELECT_TYPE_ADMIN = 2;
 
     /**
      * 学生选课。
@@ -367,19 +396,21 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
             selection.setSemesterId(semesterId);
             selection.setSelectTime(now);
             selection.setStatus(Constants.SELECTION_SELECTED);
-            // 选课方式：1-正常选课，2-管理员代选
-            selection.setSelectType(1);
+            // 选课方式：走学生自主选课路径，固定为 1（管理员代选为 2）
+            selection.setSelectType(SELECT_TYPE_NORMAL);
             baseMapper.insert(selection);
             return;
         }
 
-        // 场景二：存在历史记录（status = 0 已退选，或 status = 2 已修完重修），复用该行
+        // 场景二：存在历史记录（status = 0 已退选，或 status = 2 已修完重修），复用该行。
+        // 注意 selectType 也要一并重置：若该行上次是管理员代选的记录，
+        // 学生本次自主复选后应更新为「正常选课」，否则审计时会误判操作来源。
         baseMapper.update(null, Wrappers.<CourseSelection>lambdaUpdate()
             .eq(CourseSelection::getId, existing.getId())
             .set(CourseSelection::getStatus, Constants.SELECTION_SELECTED)
             .set(CourseSelection::getSelectTime, now)
             .set(CourseSelection::getDropTime, null)
-            .set(CourseSelection::getSelectType, 1));
+            .set(CourseSelection::getSelectType, SELECT_TYPE_NORMAL));
     }
 
     /**
@@ -1106,5 +1137,301 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    // ==================== 教务代选（管理员） ====================
+
+    /**
+     * 查询指定学生的选课记录（管理员视角）。
+     *
+     * <p><b>为什么必须校验角色</b>：学生ID 来自请求参数而非登录态，
+     * 若不校验，任何登录用户都能通过改参数查别人的选课记录（水平越权）。
+     * 这是本方法与 {@link #pageMySelections} 的本质差异——
+     * 后者从登录态取学生ID，天然免疫越权。</p>
+     *
+     * <p><b>为什么先校验学生存在</b>：学生被删除后查询会返回空列表，
+     * 管理员无法区分「该生确实没选课」与「该生不存在」，
+     * 提前拦截可给出明确提示。</p>
+     *
+     * @param studentId  目标学生ID
+     * @param pageNum    页码
+     * @param pageSize   每页条数
+     * @param semesterId 学期ID（可选，不传则查询全部学期）
+     * @param status     选课状态（可选）：0-已退选 1-已选课 2-已修完
+     * @return 分页选课记录
+     */
+    @Override
+    public PageResult<CourseSelection> pageStudentSelections(Long studentId, Long pageNum,
+                                                             Long pageSize, Long semesterId, Integer status) {
+        requireAdmin();
+        BusinessException.throwIf(studentId == null, ResultCode.PARAM_ERROR);
+        // 学生可能已被删除，提前拦截给出明确提示，避免返回空列表被误认为「该生没选课」
+        BusinessException.throwIf(studentMapper.selectById(studentId) == null,
+            ResultCode.STUDENT_NOT_FOUND);
+
+        // 分页参数经 Pages 归一化（null/越界等异常输入统一兜底为合法值）
+        IPage<CourseSelection> page = baseMapper.selectStudentSelections(
+            new Page<>(Pages.pageNum(pageNum), Pages.pageSize(pageSize)),
+            studentId, semesterId, status);
+        return PageResult.of(page);
+    }
+
+    /**
+     * 校验当前登录用户为管理员。
+     *
+     * <p><b>为什么在 Service 层再校验一次</b>：Controller 层的
+     * {@code @PreAuthorize} 只覆盖经过该 Controller 的请求，
+     * 而 Service 方法可能被其它入口（定时任务、内部调用、后续新增的 Controller）复用。
+     * 把权限校验放在 Service 内部，才能保证无论从哪个入口进入都受约束。</p>
+     *
+     * <p>校验失败抛 {@code ROLE_NOT_ALLOWED}，与全局异常处理配合返回 403 语义。</p>
+     */
+    private void requireAdmin() {
+        BusinessException.throwIf(!SecurityUtils.getLoginUser().isAdmin(),
+            ResultCode.ROLE_NOT_ALLOWED, "仅管理员可执行该操作");
+    }
+
+    /**
+     * 教务代选：为学生手工添加一门课程。
+     *
+     * <p><b>为什么绕过选课窗口</b>：代选是教务在选课结束后补救学生漏选、退选误操作等场景，
+     * 若仍受时间窗口限制则该功能形同虚设。但<b>容量、学分、冲突、重复选课这些
+     * 数据正确性约束必须保留</b>——绕过它们会直接破坏数据一致性。</p>
+     *
+     * <p><b>课程状态仍要求「正常」</b>：已下架或已结课的课程不应再产生新的选课记录。</p>
+     *
+     * <p><b>事务与并发</b>：与 {@link #selectCourse} 相同——先 Redis 预占，
+     * 再在事务内锁定学生行复检后落库，失败归还预占。锁定的是<b>被代选学生</b>的行，
+     * 因为需要串行化的是「该学生的学分与冲突状态」。</p>
+     *
+     * <p><b>与 {@link #selectCourse} 的校验差异对照</b>（代选<b>跳过</b>的仅前两项）：</p>
+     * <ul>
+     *   <li>选课开关（配置 + Redis 动态开关）—— 学生校验，代选<b>跳过</b></li>
+     *   <li>学期状态与选课时间窗口 —— 学生校验，代选<b>跳过</b></li>
+     *   <li>课程存在且 {@code status = 1} —— 两者均校验</li>
+     *   <li>学分上限 —— 两者均校验</li>
+     *   <li>时间冲突（四维判定）—— 两者均校验</li>
+     *   <li>容量与重复选课 —— 两者均校验</li>
+     * </ul>
+     *
+     * @param studentId 目标学生ID
+     * @param courseId  课程ID
+     * @param reason    代选原因（不少于 2 个字符），随操作日志落库供审计追溯
+     * @return 代选结果，包含最新剩余容量
+     */
+    @Override
+    public SelectionResultVO adminAddSelection(Long studentId, Long courseId, String reason) {
+        requireAdmin();
+        // 代选原因必填：随操作日志（@OperationLog saveParam）落库，供后续审计追溯
+        BusinessException.throwIf(StrUtil.isBlank(reason) || reason.trim().length() < 2,
+            ResultCode.PARAM_ERROR, "请填写代选原因（不少于 2 个字符）");
+        BusinessException.throwIf(studentId == null, ResultCode.PARAM_ERROR);
+        BusinessException.throwIf(courseId == null, ResultCode.PARAM_ERROR);
+        BusinessException.throwIf(studentMapper.selectById(studentId) == null,
+            ResultCode.STUDENT_NOT_FOUND);
+        // 课程校验：代选虽绕过时间窗口，但课程本身必须存在、处于「正常」状态且关联学期。
+        // 已下架/已结课的课程再产生选课记录会破坏课表与成绩数据的一致性。
+        Course course = courseMapper.selectCourseDetail(courseId);
+        BusinessException.throwIf(course == null, ResultCode.COURSE_NOT_FOUND);
+        BusinessException.throwIf(!Constants.COURSE_STATUS_NORMAL.equals(course.getStatus()),
+            ResultCode.COURSE_NOT_FOUND, "该课程当前不可选（已下架或已结课）");
+        // 学期从课程反查，而非取「当前学期」——代选可能发生在选课期之外，
+        // 此时当前学期未必是课程的所属学期，用当前学期会导致校验与落库都错位。
+        Long semesterId = course.getSemesterId();
+        BusinessException.throwIf(semesterId == null, ResultCode.COURSE_NOT_FOUND, "课程未关联学期，无法代选");
+
+        // ---------------- 第一轮校验（无锁，快速失败） ----------------
+        // 先做一遍廉价校验，让绝大多数非法请求在进入事务前就被拒绝，减少锁竞争与事务开销。
+        // 学分与冲突：与学生选课同一套逻辑，代选同样不该制造冲突课表或超学分。
+        checkCreditLimit(studentId, semesterId, course);
+        List<ConflictVO> conflicts = findConflicts(studentId, courseId, semesterId);
+        if (!conflicts.isEmpty()) {
+            throw new BusinessException(ResultCode.COURSE_TIME_CONFLICT, conflicts.get(0).getDescription());
+        }
+
+        // ---------------- Redis 原子预占 ----------------
+        // prepareCourseCache 保证容量与已选集合两个 Key 就绪后再执行 Lua，
+        // 否则脚本会因 capacityKey 不存在而返回 LUA_CACHE_NOT_READY(3)。
+        prepareCourseCache(courseId, course);
+
+        int result = normalizeLuaResult(executeSelectCourseScript(courseId, studentId));
+        // 缓存可能刚好在两步之间过期，此处重试一次：重建缓存后再试，
+        // 仍失败才向上抛出 3010，避免因一次偶发的过期而让教务操作失败。
+        if (result == LUA_CACHE_NOT_READY) {
+            prepareCourseCache(courseId, course);
+            result = normalizeLuaResult(executeSelectCourseScript(courseId, studentId));
+        }
+        // Lua 约定返回值：0-成功 1-已选过 2-余量不足 3-缓存未就绪；其余视为异常
+        switch (result) {
+            case LUA_OK -> {
+                // 预占成功，继续落库
+            }
+            case LUA_ALREADY_SELECTED -> throw new BusinessException(ResultCode.COURSE_ALREADY_SELECTED);
+            case LUA_FULL -> throw new BusinessException(ResultCode.COURSE_FULL);
+            case LUA_CACHE_NOT_READY -> throw new BusinessException(ResultCode.COURSE_CACHE_NOT_READY);
+            default -> throw new BusinessException(ResultCode.SYSTEM_BUSY);
+        }
+
+        // ---------------- 第二轮校验 + 落库（事务内，锁定学生行） ----------------
+        // 为什么要复检：预占只保证了「课程容量」的原子性，但学分与时间冲突依赖的是
+        // 「该学生已选课程集合」，这一集合在预占到落库之间可能被并发选课改变。
+        // 因此锁住学生行再复检，把「同一学生的选课决策」串行化。
+        try {
+            new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                lockStudentRow(studentId);
+                checkCreditLimit(studentId, semesterId, course);
+                List<ConflictVO> lockedConflicts = findConflicts(studentId, courseId, semesterId);
+                if (!lockedConflicts.isEmpty()) {
+                    throw new BusinessException(ResultCode.COURSE_TIME_CONFLICT,
+                        lockedConflicts.get(0).getDescription());
+                }
+                persistAdminSelection(studentId, courseId, semesterId);
+                // 数据库层兜底：若已选人数已达上限则返回 0，说明并发的其他请求抢先占满，
+                // 此时回滚而非超卖（Redis 与 DB 双保险）。
+                if (courseMapper.increaseSelectedCount(courseId) == 0) {
+                    throw new BusinessException(ResultCode.COURSE_FULL);
+                }
+            });
+        } catch (RuntimeException e) {
+            // 落库失败必须归还 Redis 预占：Redis 是余量主数据，
+            // 若不归还会出现「Redis 已扣减、数据库无记录」的永久偏差。
+            rollbackReservation(courseId, studentId);
+            throw e;
+        }
+
+        Integer remaining = currentCapacity(courseId);
+        log.info("[教务代选] 成功 studentId={}, courseId={}, 剩余容量={}", studentId, courseId, remaining);
+        return new SelectionResultVO(true, courseId, course.getCourseName(), remaining, "代选成功");
+    }
+
+    /**
+     * 代选落库：逻辑与 {@link #persistSelection} 一致，仅 {@code selectType} 写入 2。
+     *
+     * <p><b>为什么不复用 {@code persistSelection}</b>：给后者加一个 selectType 参数
+     * 会改动已验证的学生选课主路径；拆成独立私有方法，
+     * 既能共用「有记录则复用、无记录则新增」的策略，又互不影响。</p>
+     *
+     * <p><b>为什么优先复用历史记录</b>：{@code course_selection} 存在
+     * {@code (student_id, course_id, semester_id)} 唯一索引。
+     * 学生退课后记录仍在（软删除），若直接 INSERT 会撞唯一键；
+     * 复用旧记录既能避免冲突，又能保留原始选课历史链路。</p>
+     */
+    private void persistAdminSelection(Long studentId, Long courseId, Long semesterId) {
+        CourseSelection existing = baseMapper.selectOne(Wrappers.<CourseSelection>lambdaQuery()
+            .eq(CourseSelection::getStudentId, studentId)
+            .eq(CourseSelection::getCourseId, courseId)
+            .eq(CourseSelection::getSemesterId, semesterId));
+
+        // 数据库侧二重防重：Redis 已选集合已查过一次，此处以库为准兜底。
+        // 之所以要两层，是因为 Redis 集合可能因过期/回源而短暂缺失，DB 唯一索引才是最终防线。
+        BusinessException.throwIf(existing != null && Constants.SELECTION_SELECTED.equals(existing.getStatus()),
+            ResultCode.COURSE_ALREADY_SELECTED);
+
+        LocalDateTime now = LocalDateTime.now();
+
+        if (existing == null) {
+            // 全新记录：直接插入
+            CourseSelection selection = new CourseSelection();
+            selection.setStudentId(studentId);
+            selection.setCourseId(courseId);
+            selection.setSemesterId(semesterId);
+            selection.setSelectTime(now);
+            selection.setStatus(Constants.SELECTION_SELECTED);
+            selection.setSelectType(SELECT_TYPE_ADMIN);
+            baseMapper.insert(selection);
+            return;
+        }
+
+        // 复用历史记录（status = 0 已退选 / status = 2 已修完重修）：
+        // 重置为「已选课」，同时清空上次的退选时间，并标记为管理员代选。
+        // 注意：updateById / update(null, wrapper) 默认忽略 null 值，
+        // dropTime 必须用 set(SFunction, null) 显式声明才能真正清空该列。
+        baseMapper.update(null, Wrappers.<CourseSelection>lambdaUpdate()
+            .eq(CourseSelection::getId, existing.getId())
+            .set(CourseSelection::getStatus, Constants.SELECTION_SELECTED)
+            .set(CourseSelection::getSelectTime, now)
+            .set(CourseSelection::getDropTime, null)
+            .set(CourseSelection::getSelectType, SELECT_TYPE_ADMIN));
+    }
+
+    /**
+     * 教务代退选：为学生手工退掉一门课程。
+     *
+     * <p><b>为什么代退选不校验选课窗口</b>：与代选同理，退课本就不受窗口限制。</p>
+     *
+     * <p>与学生退课一致：<b>已录入成绩的课程不可退选</b>；
+     * 采用软删除（{@code status = 0} + {@code dropTime}），保留审计痕迹。</p>
+     *
+     * <p><b>三种状态的处理差异</b>：</p>
+     * <ul>
+     *   <li>{@code status = 0}（已退选）—— 抛 3004「未选该课程」，
+     *       语义上等同「该生当前不在这门课的名单里」</li>
+     *   <li>{@code status = 2}（已修完）—— 抛 3009「该课程不允许退选」，
+     *       已完成的课程退选会破坏成绩与学分统计</li>
+     *   <li>已录入成绩（{@code score != null}）—— 抛 3009，
+     *       退课会使成绩记录失去挂靠的选课记录</li>
+     * </ul>
+     *
+     * @param studentId 目标学生ID
+     * @param courseId  课程ID
+     * @param reason    代退选原因（不少于 2 个字符），随操作日志落库供审计追溯
+     * @return 代退选结果，包含最新剩余容量
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SelectionResultVO adminRemoveSelection(Long studentId, Long courseId, String reason) {
+        requireAdmin();
+        // 代退选原因必填：随操作日志（@OperationLog saveParam）落库，供后续审计追溯
+        BusinessException.throwIf(StrUtil.isBlank(reason) || reason.trim().length() < 2,
+            ResultCode.PARAM_ERROR, "请填写代退选原因（不少于 2 个字符）");
+        BusinessException.throwIf(studentId == null, ResultCode.PARAM_ERROR);
+        BusinessException.throwIf(courseId == null, ResultCode.PARAM_ERROR);
+
+        // 课程校验：需要正确的 semesterId 才能定位到「哪一学期的那条选课记录」
+        Course course = courseMapper.selectCourseDetail(courseId);
+        BusinessException.throwIf(course == null, ResultCode.COURSE_NOT_FOUND);
+        // 同学期反查逻辑：代退选同样可能发生在选课期之外，不能取「当前学期」
+        Long semesterId = course.getSemesterId();
+        BusinessException.throwIf(semesterId == null, ResultCode.COURSE_NOT_FOUND, "课程未关联学期，无法代退选");
+
+        // 定位选课记录：三元组（学生 + 课程 + 学期）才能唯一确定一条记录
+        CourseSelection selection = baseMapper.selectOne(Wrappers.<CourseSelection>lambdaQuery()
+            .eq(CourseSelection::getStudentId, studentId)
+            .eq(CourseSelection::getCourseId, courseId)
+            .eq(CourseSelection::getSemesterId, semesterId));
+        BusinessException.throwIf(selection == null, ResultCode.COURSE_NOT_SELECTED);
+
+        // ---------------- 状态校验（三态区分） ----------------
+        // 已退选(status=0)：语义上等同「该生未选此课」，用 3004 而非 3009，
+        //                   便于前端提示「学生当前未选该课程」而非「该课不允许退选」。
+        if (Constants.SELECTION_DROPPED.equals(selection.getStatus())) {
+            throw new BusinessException(ResultCode.COURSE_NOT_SELECTED);
+        }
+        // 已修完(status=2)：课程已完成，不允许再退，否则成绩与学分统计会被破坏。
+        BusinessException.throwIf(!Constants.SELECTION_SELECTED.equals(selection.getStatus()),
+            ResultCode.DROP_NOT_ALLOWED, "该课程已修完，无法退课");
+        // 已录入成绩：退课会使成绩记录失去挂靠的选课记录，故一律禁止（与学生退课一致）。
+        BusinessException.throwIf(selection.getScore() != null,
+            ResultCode.DROP_NOT_ALLOWED, "该课程已录入成绩，无法退课");
+
+        // ---------------- 归还 Redis 余量 ----------------
+        // 先归还余量再改库：即使后续改库失败，多余的余量也只会造成「余量偏高」，
+        // 由 syncSelectionCount 定时校正兜底；反之若先改库后归还失败，
+        // 会出现「已退课但余量未恢复」的容量损失，更严重。
+        returnReservation(courseId, studentId);
+
+        // ---------------- 软删除 ----------------
+        // 采用 status=0 + dropTime 而非物理删除：保留选课历史，
+        // 便于审计与「复选」时复用该记录（见 persistAdminSelection）。
+        baseMapper.update(null, Wrappers.<CourseSelection>lambdaUpdate()
+            .eq(CourseSelection::getId, selection.getId())
+            .set(CourseSelection::getStatus, Constants.SELECTION_DROPPED)
+            .set(CourseSelection::getDropTime, LocalDateTime.now()));
+        // 同步课程表的已选人数计数，保持与 course_selection 一致
+        courseMapper.decreaseSelectedCount(courseId);
+
+        Integer remaining = currentCapacity(courseId);
+        log.info("[教务代退选] 成功 studentId={}, courseId={}, 剩余容量={}", studentId, courseId, remaining);
+        return new SelectionResultVO(true, courseId, course.getCourseName(), remaining, "代退选成功");
     }
 }

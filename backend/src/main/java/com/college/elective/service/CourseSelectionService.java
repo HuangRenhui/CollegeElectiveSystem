@@ -109,4 +109,49 @@ public interface CourseSelectionService extends IService<CourseSelection> {
      * @return 分页课程列表
      */
     PageResult<Course> pageAvailableCourses(CourseQueryDTO query, Long studentId);
+
+    /**
+     * 查询指定学生的选课记录（管理员视角）。
+     *
+     * <p>与学生侧的 {@link #pageMySelections} 不同，学生ID 由调用方显式传入，
+     * 因此实现时必须校验调用者角色，防止越权查询他人选课数据。</p>
+     *
+     * @param studentId  目标学生ID
+     * @param pageNum    页码
+     * @param pageSize   每页条数
+     * @param semesterId 学期ID（可选，不传则查询全部学期）
+     * @param status     选课状态（可选）：0-已退选 1-已选课 2-已修完
+     * @return 分页选课记录
+     */
+    PageResult<CourseSelection> pageStudentSelections(Long studentId, Long pageNum,
+                                                      Long pageSize, Long semesterId, Integer status);
+
+    /**
+     * 教务代选：为学生手工添加一门课程。
+     *
+     * <p>与 {@link #selectCourse} 的核心差异：代选绕过选课开关、学期状态与选课时间窗口
+     * （这些约束面向学生自主选课），但保留课程状态、学分上限、时间冲突、
+     * 容量与重复选课等全部数据正确性校验。</p>
+     *
+     * <p>写入的记录 {@code select_type = 2}，与正常选课区分，便于审计追溯。</p>
+     *
+     * @param studentId 目标学生ID
+     * @param courseId  课程ID
+     * @param reason    代选原因（不少于 2 个字符），随操作日志落库供审计
+     * @return 代选结果，包含最新剩余容量
+     */
+    SelectionResultVO adminAddSelection(Long studentId, Long courseId, String reason);
+
+    /**
+     * 教务代退选：为学生手工退掉一门课程。
+     *
+     * <p>采用软删除（{@code status} 置为 0 并记录 {@code drop_time}）保留审计痕迹；
+     * 已录入成绩的课程不可退选。</p>
+     *
+     * @param studentId 目标学生ID
+     * @param courseId  课程ID
+     * @param reason    代退选原因（不少于 2 个字符），随操作日志落库供审计
+     * @return 代退选结果，包含最新剩余容量
+     */
+    SelectionResultVO adminRemoveSelection(Long studentId, Long courseId, String reason);
 }
