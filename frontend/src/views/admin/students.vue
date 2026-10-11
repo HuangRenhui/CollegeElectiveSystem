@@ -242,7 +242,7 @@
             </el-table-column>
             <el-table-column label="操作" width="90" fixed="right">
               <template #default="{ row }">
-          <el-button
+                <el-button
                   v-if="row.status === 1"
                   link
                   type="danger"
@@ -652,8 +652,6 @@ function isFull(course) {
  * 代选课程。先请求冲突预检，有冲突则要求管理员二次确认后再提交。
  */
 async function handleAdminAdd(course) {
-  ElMessage.warning('教务代选尚未实现，请学生自行选课')
-  return
   let reason
   try {
     const result = await ElMessageBox.prompt(
@@ -690,8 +688,6 @@ async function handleAdminAdd(course) {
  * 代退选。已录入成绩的课程不可退选。
  */
 async function handleAdminDrop(row) {
-  ElMessage.warning('教务代退选尚未实现，请学生自行退课')
-  return
   if (row.score !== null && row.score !== undefined) {
     ElMessage.warning('该课程已录入成绩，无法代退选')
     return

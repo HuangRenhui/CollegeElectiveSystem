@@ -18,24 +18,16 @@
         <div class="course-info__actions">
           <el-tag type="info" effect="plain">{{ course.credit }} 学分</el-tag>
           <el-tag type="success" effect="plain">已选 {{ sheet.length }} 人</el-tag>
-          <el-button type="primary" :loading="saving" disabled>
+          <el-button type="primary" :loading="saving" @click="handleSave">
             <el-icon><DocumentAdd /></el-icon>保存草稿
           </el-button>
-          <el-button type="success" :loading="publishing" disabled>
+          <el-button type="success" :loading="publishing" @click="handlePublish">
             <el-icon><Promotion /></el-icon>发布成绩
           </el-button>
-          <el-button type="warning" plain disabled>撤回发布</el-button>
+          <el-button type="warning" plain :loading="revoking" @click="handleRevoke">撤回发布</el-button>
         </div>
       </div>
 
-      <el-alert
-        type="warning"
-        :closable="false"
-        show-icon
-        style="margin-top: 14px"
-        title="成绩录入尚未开放"
-        description="查询成绩单可用。保存草稿、发布与撤回接口尚未实现，请勿将本页当作已可录入。"
-      />
       <el-alert
         type="info"
         :closable="false"
@@ -132,6 +124,7 @@ const courseId = Number(route.params.courseId)
 const loading = ref(false)
 const saving = ref(false)
 const publishing = ref(false)
+const revoking = ref(false)
 const sheet = ref([])
 const course = ref({})
 const keyword = ref('')
@@ -261,9 +254,14 @@ async function handleRevoke() {
   await ElMessageBox.confirm('撤回后成绩将变为草稿状态，学生无法查看。确定撤回吗？', '撤回确认', {
     type: 'warning'
   })
-  await revokeGrades(courseId)
-  ElMessage.success('已撤回成绩发布')
-  await loadSheet()
+  revoking.value = true
+  try {
+    await revokeGrades(courseId)
+    ElMessage.success('已撤回成绩发布')
+    await loadSheet()
+  } finally {
+    revoking.value = false
+  }
 }
 </script>
 

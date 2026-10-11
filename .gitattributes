@@ -1,0 +1,65 @@
+# ==========================================================================
+# Git 行尾（EOL）统一策略
+#
+# 背景：本项目在 Windows 上开发，若未固定行尾，同一文件在不同机器上
+#       反复出现 "LF will be replaced by CRLF" 警告，且可能触发
+#       "Entry not uptodate" 等问题，导致 reset / merge / checkout 失败。
+#
+# 策略：仓库内统一以 LF 存储，检出时按平台自动转换。
+#       这样 Windows 开发机得到 CRLF，Linux 服务器得到 LF，
+#       而 Git 索引中始终只有一份 LF 版本，不会产生虚假差异。
+# ==========================================================================
+
+# 默认：文本文件一律以 LF 存入仓库
+* text=auto eol=lf
+
+# --------------------------------------------------------------------------
+# 明确按文本处理（部分文件在 Git 中可能被误判为二进制）
+# --------------------------------------------------------------------------
+*.java        text eol=lf
+*.xml         text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+*.properties  text eol=lf
+*.sql         text eol=lf
+*.lua         text eol=lf
+*.md          text eol=lf
+*.js          text eol=lf
+*.vue         text eol=lf
+*.json        text eol=lf
+*.css         text eol=lf
+*.scss        text eol=lf
+*.wxs         text eol=lf
+*.ts          text eol=lf
+*.html        text eol=lf
+*.gitignore   text eol=lf
+*.bat         text eol=lf diff=astextplain
+
+# --------------------------------------------------------------------------
+# 二进制文件：禁止行尾转换与文本差异
+# --------------------------------------------------------------------------
+*.png         binary
+*.jpg         binary
+*.jpeg        binary
+*.gif         binary
+*.ico         binary
+*.webp        binary
+*.woff        binary
+*.woff2       binary
+*.ttf         binary
+*.eot         binary
+*.pdf         binary
+*.zip         binary
+*.jar         binary
+*.class       binary
+*.exe         binary
+*.dll         binary
+
+# --------------------------------------------------------------------------
+# 差异展示优化：把「有意义的文件」当作文本比较
+# --------------------------------------------------------------------------
+*.md          diff=markdown
+*.sql         diff=sql
+*.yml         diff=astextplain
+*.yaml        diff=astextplain
+*.bat         diff=astextplain

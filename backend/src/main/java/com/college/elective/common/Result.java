@@ -33,11 +33,22 @@ public class Result<T> implements Serializable {
     @Schema(description = "响应时间")
     private LocalDateTime timestamp;
 
+    /**
+     * 响应时刻的 epoch 毫秒，作为前端的时间基准。
+     *
+     * <p>前端据此计算「服务器时刻 - 本地时刻」的偏移量，从而让选课倒计时
+     * 不受用户本机时钟被修改的影响。选课窗口的最终判定仍以服务端为准，
+     * 此字段只用于保证前端展示与按钮状态的一致性。</p>
+     */
+    @Schema(description = "服务器时间戳（epoch 毫秒），供前端校正本地时钟")
+    private Long serverTime;
+
     @Schema(description = "是否成功")
     private Boolean success;
 
     public Result() {
         this.timestamp = LocalDateTime.now();
+        this.serverTime = System.currentTimeMillis();
     }
 
     public static <T> Result<T> success() {

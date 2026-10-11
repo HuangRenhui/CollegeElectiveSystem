@@ -4,6 +4,7 @@ import NProgress from 'nprogress'
 import 'nprogress/nprogress.css'
 import router from '@/router'
 import { useUserStore } from '@/store/modules/user'
+import { calibrate } from '@/utils/serverTime'
 
 NProgress.configure({ showSpinner: false, minimum: 0.15 })
 
@@ -20,6 +21,8 @@ let isReloginPrompted = false
 service.interceptors.request.use(
   (config) => {
     NProgress.start()
+    // 记录发起时刻，与响应到达时刻共同用于估算单程网络耗时
+    config.__sentAt = Date.now()
     const userStore = useUserStore()
     if (userStore.token) {
       config.headers.Authorization = `Bearer ${userStore.token}`
@@ -45,6 +48,12 @@ service.interceptors.response.use(
 
     if (!data || typeof data !== 'object') {
       return data
+    }
+
+    // 用每次响应回传的时间戳校正本地时钟偏差。
+    // 放在成功判断之前：错误响应同样携带 serverTime，登录失败等场景也能校准。
+    if (typeof data.serverTime === 'number') {
+      calibrate(data.serverTime, response.config.__sentAt, Date.now())
     }
 
     if (data.code === 200) {

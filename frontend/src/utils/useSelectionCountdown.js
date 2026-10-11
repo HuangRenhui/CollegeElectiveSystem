@@ -1,11 +1,19 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { serverNow } from '@/utils/serverTime'
 
 /**
  * 选课窗口倒计时。
  *
  * 依据学期配置的选课开放时间与截止时间，实时计算当前所处的选课阶段，
- * 并给出可用于按钮禁用与提示文案的状态。时间来源为服务端学期配置，
- * 前端仅做展示与交互控制，最终的选课资格仍由后端校验。
+ * 并给出可用于按钮禁用与提示文案的状态。
+ *
+ * <p><b>时间基准</b>：当前时刻取自 {@link serverNow}（以服务器时间为基准），
+ * 而非浏览器本地时间。用户修改本机系统时间不会影响倒计时进度，
+ * 避免出现「按钮亮了却选不上课」的错觉。服务器基准由
+ * `request.js` 的响应拦截器在每次接口返回时自动校正。</p>
+ *
+ * <p>时间配置来自服务端学期表，最终选课资格仍由后端校验，
+ * 前端仅做展示与交互控制。</p>
  *
  * @param {import('vue').Ref} semesterRef 学期对象（含 selectStartTime / selectEndTime）
  * @param {Object} [options]
@@ -16,7 +24,7 @@ export function useSelectionCountdown(semesterRef, options = {}) {
   const { tickMs = 1000 } = options
 
   /** 每秒递增，用于驱动倒计时重新计算 */
-  const now = ref(Date.now())
+  const now = ref(serverNow())
   let timer = null
 
   function parse(value) {
@@ -37,14 +45,15 @@ export function useSelectionCountdown(semesterRef, options = {}) {
   function start() {
     stop()
     timer = setInterval(() => {
-      now.value = Date.now()
+      // 使用服务器基准时刻，而非 Date.now()
+      now.value = serverNow()
     }, tickMs)
   }
 
   watch(
     semesterRef,
     () => {
-      now.value = Date.now()
+      now.value = serverNow()
       start()
     },
     { immediate: true }
