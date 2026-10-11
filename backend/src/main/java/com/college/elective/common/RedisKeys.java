@@ -38,6 +38,35 @@ public final class RedisKeys {
     /** 公告列表缓存 */
     public static final String NOTICE_LIST = PREFIX + "notice:list:";
 
+    // ---------------------------- 选课排队（削峰） ----------------------------
+    /**
+     * 排队队列：elective:selection:queue:{courseId}
+     *
+     * <p>ZSET，member = studentId，score = 排队号。
+     * 排队号由 {@link #SELECTION_SEQ} 严格递增生成，天然满足先到先得。</p>
+     */
+    public static final String SELECTION_QUEUE = PREFIX + "selection:queue:";
+    /**
+     * 排队号发号器：elective:selection:seq:{courseId}
+     *
+     * <p>String，INCR 递增。首次入队时以它为起点确定叫号进度。</p>
+     */
+    public static final String SELECTION_SEQ = PREFIX + "selection:seq:";
+    /**
+     * 排队起始时刻：elective:selection:qstart:{courseId}
+     *
+     * <p>String，epoch 毫秒。叫号进度由它与当前时刻的时间差乘以放行速率算出，
+     * 从而无需任何定时器即可完成放行——这是本方案能在多实例下并行工作的关键。</p>
+     */
+    public static final String SELECTION_QSTART = PREFIX + "selection:qstart:";
+    /**
+     * 学生排队令牌：elective:selection:token:{courseId}:{studentId}
+     *
+     * <p>String，value = 排队号。TTL 与选课窗口同量级，
+     * 超时未使用需重新取号，避免无限堆积占位。</p>
+     */
+    public static final String SELECTION_TOKEN = PREFIX + "selection:token:";
+
     // ---------------------------- 标签 ----------------------------
     public static final String TAG_COURSE = PREFIX + "cache:course";
     public static final String TAG_NOTICE = PREFIX + "cache:notice";

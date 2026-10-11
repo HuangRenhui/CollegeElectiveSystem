@@ -158,14 +158,43 @@
         </el-descriptions-item>
       </el-descriptions>
     </el-dialog>
+
+    <!-- 选课排队提示：高峰期限流，避免直接失败 -->
+    <el-dialog
+      v-model="queueVisible"
+      title="选课排队中"
+      width="420px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+    >
+      <el-progress
+        :percentage="queueProgress"
+        :stroke-width="10"
+        :status="queueAdmitted ? 'success' : undefined"
+      />
+      <div class="queue-info">
+        <p class="queue-message">{{ queueStatus.message || '正在为你排队，请稍候' }}</p>
+        <p v-if="queueStatus.queuedCount" class="text-muted">
+          当前排队 {{ queueStatus.queuedCount }} 人
+        </p>
+        <p class="text-muted">令牌剩余 {{ queueStatus.tokenTtlSeconds || 0 }} 秒</p>
+      </div>
+      <template #footer>
+        <el-button @click="handleCancelQueue">退出排队</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import { listCourses, getCourseDetail, selectCourse, checkConflict } from '@/api/student'
+import {
+  listCourses, getCourseDetail, selectCourse, checkConflict,
+  requestQueue, queryQueue, cancelQueue
+} from '@/api/student'
 import { getCurrentSemester } from '@/api/common'
 import { useAppStore } from '@/store/modules/app'
 import { useSelectionCountdown } from '@/utils/useSelectionCountdown'
@@ -225,8 +254,24 @@ const query = reactive({
 const detailVisible = ref(false)
 const detail = reactive({})
 
+// ---------- 选课排队（高峰期削峰） ----------
+/** 排队提示弹窗是否可见 */
+const queueVisible = ref(false)
+/** 当前排队状态，取值见 QueueStatusVO */
+const queueStatus = ref({})
+/** 轮询定时器：固定节奏查询叫号进度 */
+let queueTimer = null
+/** 看门狗定时器：令牌耗尽时兜底停止轮询，避免定时器泄漏 */
+let queueWatchdog = null
+
 onMounted(async () => {
   await Promise.all([loadData(), loadSemester()])
+})
+
+// 组件卸载时清理定时器，防止切换页面后仍在后台轮询
+onBeforeUnmount(() => {
+  if (queueTimer) clearInterval(queueTimer)
+  if (queueWatchdog) clearTimeout(queueWatchdog)
 })
 
 async function loadSemester() {
@@ -374,6 +419,12 @@ async function handleSelect(course) {
 
   loadingId.value = course.id
   try {
+    // ---------- 排队准入（高峰期削峰） ----------
+    // 未启用排队时后端直接返回「已叫号」状态，此处近乎零开销；
+    // 启用后若尚未叫到，则转入轮询等待，叫到后再提交选课
+    const admitted = await ensureQueueAdmitted(course.id)
+    if (!admitted) return
+
     const { data } = await selectCourse(course.id)
     ElMessage.success(data.message || '选课成功')
     await loadData()
@@ -382,6 +433,76 @@ async function handleSelect(course) {
     await loadData()
   } finally {
     loadingId.value = null
+  }
+}
+
+/**
+ * 确保已叫到号，可提交选课。
+ *
+ * <p>流程：取号 → 若已叫到则立即返回 true；否则弹出排队提示并每 2.5 秒轮询一次，
+ * 叫到或令牌失效时停止轮询。</p>
+ *
+ * <p><b>为什么用 setInterval 而非 setTimeout 递归</b>：递归 setTimeout 会把
+ * 上一次请求的耗时累加到等待间隔里，网络慢时轮询频率会越来越低；
+ * setInterval 由浏览器保证固定节奏。</p>
+ *
+ * @param {number} courseId 课程ID
+ * @returns {Promise<boolean>} 是否可以继续提交选课
+ */
+async function ensureQueueAdmitted(courseId) {
+  const { data: status } = await requestQueue(courseId)
+
+  // 已叫号（或未启用排队），直接放行
+  if (status.mySeq <= status.currentSeq) return true
+
+  queueVisible.value = true
+  queueStatus.value = status
+
+  return new Promise((resolve) => {
+    queueTimer = setInterval(async () => {
+      try {
+        const { data } = await queryQueue(courseId)
+        queueStatus.value = data
+        if (data.mySeq <= data.currentSeq) {
+          stopQueuePolling()
+          resolve(true)
+        } else if (!data.tokenValid) {
+          stopQueuePolling()
+          ElMessage.warning(data.message || '排队令牌已失效，请重新选课')
+          resolve(false)
+        }
+      } catch {
+        // 单次轮询失败不中断整体等待，继续重试直到令牌耗尽
+      }
+    }, 2500)
+
+    // 令牌最长有效期兜底，避免用户关闭弹窗后定时器一直运行
+    queueWatchdog = setTimeout(() => {
+      stopQueuePolling()
+      resolve(false)
+    }, (status.tokenTtlSeconds + 5) * 1000)
+  })
+}
+
+function stopQueuePolling() {
+  if (queueTimer) {
+    clearInterval(queueTimer)
+    queueTimer = null
+  }
+  if (queueWatchdog) {
+    clearTimeout(queueWatchdog)
+    queueWatchdog = null
+  }
+  queueVisible.value = false
+}
+
+/** 用户主动退出排队 */
+async function handleCancelQueue() {
+  try {
+    await cancelQueue(queueStatus.value.courseId)
+    ElMessage.info('已退出排队')
+  } finally {
+    stopQueuePolling()
   }
 }
 
@@ -411,9 +532,44 @@ function buildConflictHtml(course, conflicts) {
     <p style="color:#f56c6c;line-height:1.9">${lines}</p>
     <p style="color:#909399;font-size:12px">继续选课可能导致无法正常上课，请确认后再操作。</p>`
 }
+
+/** 是否已叫号（可立即提交选课） */
+const queueAdmitted = computed(
+  () => queueStatus.value.mySeq <= queueStatus.value.currentSeq
+)
+
+/**
+ * 排队进度百分比。
+ *
+ * <p>以「我的排队号 / 当前叫号位置」衡量——叫号位置越过我的号即完成，
+ * 因此进度到达 100% 等价于已放行。若尚无排队号（undefined）则显示 0。</p>
+ */
+const queueProgress = computed(() => {
+  const mySeq = queueStatus.value.mySeq || 0
+  const currentSeq = queueStatus.value.currentSeq || 0
+  if (mySeq <= currentSeq) return 100
+  // 用 mySeq 而非 currentSeq 作分母，保证进度随叫号推进而稳步增长
+  return Math.min(99, Math.round((currentSeq / mySeq) * 100))
+})
 </script>
 
 <style lang="scss" scoped>
+.queue-info {
+  margin-top: 16px;
+  text-align: center;
+
+  .queue-message {
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #409eff;
+  }
+
+  p {
+    margin: 4px 0;
+    font-size: 12px;
+  }
+}
+
 .search-bar__spacer {
   flex: 1;
 }

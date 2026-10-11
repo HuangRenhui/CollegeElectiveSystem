@@ -41,6 +41,29 @@ public class ElectiveProperties {
         private long lockWaitMillis = 300L;
         /** 是否开放选课 */
         private boolean enabled = true;
+        /**
+         * 是否启用选课排队削峰。
+         *
+         * <p>关闭时选课链路与原先完全一致（无任何额外开销），
+         * 便于在非高峰期或压测环境中关闭。</p>
+         */
+        private boolean queueEnabled = false;
+        /**
+         * 每秒放行名额，即选课高峰期的最大并发准入速率。
+         *
+         * <p>取值建议：不超过数据库连接池容量的 1/2，
+         * 避免排队放行速度本身就把连接池打满。</p>
+         */
+        private int queuePerSecond = 50;
+        /** 单课程最大排队人数，超出直接拒绝，防止无限堆积 */
+        private int queueMaxSize = 5000;
+        /**
+         * 排队令牌有效期（秒）。
+         *
+         * <p>从取号开始计时，超时未完成选课则令牌失效、需重新取号。
+         * 应略大于「排队等待 + 选课操作」的预期总耗时。</p>
+         */
+        private long queueTokenTtlSeconds = 120L;
     }
 
     @Data

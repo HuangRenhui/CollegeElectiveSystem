@@ -70,11 +70,33 @@ elective:
     lock-wait-millis: 300
     # 是否开启选课开关（管理员可动态关闭）
     enabled: true
+    # ---------- 选课排队（高峰期削峰，默认关闭） ----------
+    # 是否启用排队。关闭时选课链路与原先完全一致，无任何额外开销
+    queue-enabled: false
+    # 每秒放行名额，即高峰期最大并发准入速率。
+    # 建议不超过数据库连接池容量的 1/2，避免放行速度本身打满连接池
+    queue-per-second: 50
+    # 单课程最大排队人数，超出直接拒绝，防止无限堆积
+    queue-max-size: 5000
+    # 排队令牌有效期（秒），超时未完成选课需重新取号
+    queue-token-ttl-seconds: 120
   cors:
     allowed-origins:
       - http://localhost:5174
       - http://localhost:80
       - http://localhost
+
+# 微信小程序配置
+# ⚠️ app-secret 必须通过环境变量 WX_APP_SECRET 注入，切勿提交到仓库
+#    未配置 app-id / app-secret 时，微信登录与订阅消息功能自动禁用，
+#    小程序端会隐藏对应入口，不影响其余功能
+wx:
+  miniapp:
+    app-id: ${WX_APP_ID:}
+    app-secret: ${WX_APP_SECRET:}
+    # 订阅消息模板ID，在微信公众平台申请后填入（需经环境变量或配置中心下发）
+    review-open-template-id: ${WX_TPL_REVIEW_OPEN:}
+    grade-publish-template-id: ${WX_TPL_GRADE_PUBLISH:}
 
 springdoc:
   swagger-ui:

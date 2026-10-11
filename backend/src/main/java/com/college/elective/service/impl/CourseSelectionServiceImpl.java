@@ -18,6 +18,7 @@ import com.college.elective.security.SecurityUtils;
 import com.college.elective.service.CourseSelectionService;
 import com.college.elective.service.SemesterService;
 import com.college.elective.vo.ConflictVO;
+import com.college.elective.vo.QueueStatusVO;
 import com.college.elective.vo.SelectionResultVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,8 +40,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * 选课服务实现。
  *
- * <h3>实现状态</h3>
- * <p>{@code CourseSelectionService} 接口声明的 <b>11 个方法已全部实现</b>，含教务代选 3 个方法：</p>
+ * <h3>能力范围</h3>
+ * <p>本类承担三类职责：</p>
  * <ul>
  *   <li><b>学生侧</b>：{@link #selectCourse(Long)}、{@link #dropCourse(Long)}、
  *       {@link #checkConflict(Long)}、{@link #pageAvailableCourses}、
@@ -129,6 +130,16 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
      * 按锁令牌释放回源短锁，避免误删后来者持有的锁
      */
     private final DefaultRedisScript<Long> releaseLockScript;
+
+    /**
+     * 选课排队取号脚本：幂等发号 + 队列容量控制（resources/lua/acquire_queue_token.lua）
+     */
+    private final DefaultRedisScript<Long> acquireQueueTokenScript;
+
+    /**
+     * 排队令牌释放脚本：放弃排队或选课成功后清理占位
+     */
+    private final DefaultRedisScript<Long> releaseQueueTokenScript;
 
     /**
      * 选课落库前锁定学生行，串行化学分与冲突复检
@@ -227,6 +238,11 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
     @Override
     public SelectionResultVO selectCourse(Long courseId) {
         Long studentId = SecurityUtils.requireStudentId();
+
+        // 排队令牌校验（削峰准入）：未叫到号的学生在此被拦下，
+        // 不进入后续的校验与落库流程，从而避免峰值请求打满数据库。
+        // 排在关闭时该方法首行即返回，无任何额外开销
+        verifyQueueToken(courseId, studentId);
 
         checkSelectionOpen();
 
@@ -1433,5 +1449,182 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
         Integer remaining = currentCapacity(courseId);
         log.info("[教务代退选] 成功 studentId={}, courseId={}, 剩余容量={}", studentId, courseId, remaining);
         return new SelectionResultVO(true, courseId, course.getCourseName(), remaining, "代退选成功");
+    }
+
+    // ==================== 选课排队（高峰期削峰） ====================
+
+    @Override
+    public QueueStatusVO requestQueue(Long courseId) {
+        Long studentId = SecurityUtils.requireStudentId();
+
+        // 前置校验：不满足基本条件的请求直接拒绝，不占用排队资源。
+        // 放在取号之前而非之后，可避免大量无效请求涌入队列
+        Course course = courseMapper.selectCourseDetail(courseId);
+        BusinessException.throwIf(course == null, ResultCode.COURSE_NOT_FOUND);
+        BusinessException.throwIf(!Constants.COURSE_STATUS_NORMAL.equals(course.getStatus()),
+            ResultCode.COURSE_NOT_FOUND, "该课程当前不可选（已下架或已结课）");
+
+        // 已选过或已满的学生无需排队，直接引导走选课流程（会得到明确提示）
+        Long semesterId = course.getSemesterId();
+        if (semesterId != null && baseMapper.selectOne(Wrappers.<CourseSelection>lambdaQuery()
+            .eq(CourseSelection::getStudentId, studentId)
+            .eq(CourseSelection::getCourseId, courseId)
+            .eq(CourseSelection::getSemesterId, semesterId)
+            .eq(CourseSelection::getStatus, Constants.SELECTION_SELECTED)) != null) {
+            throw new BusinessException(ResultCode.COURSE_ALREADY_SELECTED);
+        }
+
+        ElectiveProperties.Selection queue = properties.getSelection();
+        long now = System.currentTimeMillis();
+
+        Long seq = stringRedisTemplate.execute(
+            acquireQueueTokenScript,
+            List.of(
+                RedisKeys.SELECTION_QSTART + courseId,
+                RedisKeys.SELECTION_SEQ + courseId,
+                RedisKeys.SELECTION_QUEUE + courseId,
+                RedisKeys.SELECTION_TOKEN + courseId + ":" + studentId),
+            String.valueOf(studentId),
+            String.valueOf(queue.getQueueMaxSize()),
+            String.valueOf(queue.getQueueTokenTtlSeconds()),
+            String.valueOf(now));
+
+        BusinessException.throwIf(seq == null || seq < 0, ResultCode.SYSTEM_BUSY, "排队人数已满，请稍后重试");
+
+        // 令牌刚创建，TTL 即为配置值
+        return buildQueueStatus(courseId, seq, now, queue.getQueueTokenTtlSeconds());
+    }
+
+    @Override
+    public QueueStatusVO queryQueueStatus(Long courseId) {
+        Long studentId = SecurityUtils.requireStudentId();
+        String tokenKey = RedisKeys.SELECTION_TOKEN + courseId + ":" + studentId;
+
+        String seqValue = stringRedisTemplate.opsForValue().get(tokenKey);
+        long now = System.currentTimeMillis();
+
+        // 令牌不存在：可能已超时、已选课成功或从未取号，统一提示重新取号
+        if (seqValue == null) {
+            QueueStatusVO vo = buildQueueStatus(courseId, 0L, now, 0L);
+            vo.setTokenValid(false);
+            vo.setMessage("排队令牌已失效，请重新取号");
+            return vo;
+        }
+
+        Long ttl = stringRedisTemplate.getExpire(tokenKey, TimeUnit.SECONDS);
+        return buildQueueStatus(courseId, Long.parseLong(seqValue), now, ttl);
+    }
+
+    @Override
+    public void cancelQueue(Long courseId) {
+        Long studentId = SecurityUtils.requireStudentId();
+        // Lua 脚本幂等，重复取消不会报错
+        stringRedisTemplate.execute(releaseQueueTokenScript,
+            List.of(RedisKeys.SELECTION_QUEUE + courseId,
+                RedisKeys.SELECTION_TOKEN + courseId + ":" + studentId),
+            String.valueOf(studentId));
+    }
+
+    /**
+     * 校验排队令牌，决定是否放行进入选课核心流程。
+     *
+     * <p><b>设计取舍：这是限流（软约束），不是安全边界。</b>
+     * 即便绕过它直接调选课接口，超卖仍由 {@code select_course.lua} 兜底，
+     * 最多是让少量请求进入核心流程，<b>不会产生数据错误</b>。
+     * 因此这里采取「有令牌但未叫到则拒绝、无令牌则放行」的宽松策略，
+     * 避免因令牌服务抖动导致学生完全无法选课。</p>
+     *
+     * <p>若业务要求严格限流（无令牌一律拒绝），代价是
+     * <b>Redis 一抖动，选课功能整体不可用</b>，需谨慎取舍。</p>
+     *
+     * @param courseId 课程ID
+     * @param studentId 学生ID
+     */
+    private void verifyQueueToken(Long courseId, Long studentId) {
+        if (!properties.getSelection().isQueueEnabled()) {
+            return;
+        }
+
+        String tokenKey = RedisKeys.SELECTION_TOKEN + courseId + ":" + studentId;
+        String seqValue = stringRedisTemplate.opsForValue().get(tokenKey);
+        // 无令牌：放行，兼顾可用性（详见方法注释）
+        if (seqValue == null) {
+            return;
+        }
+
+        Long tokenTtl = stringRedisTemplate.getExpire(tokenKey, TimeUnit.SECONDS);
+        QueueStatusVO status = buildQueueStatus(courseId, Long.parseLong(seqValue),
+                System.currentTimeMillis(), tokenTtl);
+        // 有令牌但尚未叫到：直接拒绝，避免无效请求穿透到数据库
+        if (status.getMySeq() > status.getCurrentSeq()) {
+            throw new BusinessException(ResultCode.SYSTEM_BUSY,
+                String.format("正在排队中，前面还有 %d 人", status.getAheadCount()));
+        }
+    }
+
+    /**
+     * 组装排队状态（含叫号进度计算）。
+     *
+     * <p><b>叫号算法（无定时器）</b>：</p>
+     * <pre>
+     * 当前应放行到 = (当前时刻 - 排队起始时刻) ÷ 1000 × 每秒放行名额
+     * </pre>
+     *
+     * <p>之所以用时间换算而非定时任务，是因为定时器在多实例部署下需要分布式协调
+     *（每台机器都要维护同一份叫号进度），而时间换算是<b>纯计算、幂等、可多实例并行</b>的：
+     * 任何实例在任意时刻算出的叫号进度都一致。</p>
+     *
+     * @param courseId 课程ID
+     * @param mySeq 我的排队号（0 表示尚未取号）
+     * @param now 当前时刻（epoch 毫秒）
+     * @param tokenTtl 令牌剩余有效期（秒），null 或 <=0 表示已失效
+     * @return 排队状态
+     */
+    private QueueStatusVO buildQueueStatus(Long courseId, Long mySeq, long now, Long tokenTtl) {
+        ElectiveProperties.Selection queue = properties.getSelection();
+
+        String startAtValue = stringRedisTemplate.opsForValue()
+            .get(RedisKeys.SELECTION_QSTART + courseId);
+        long startAt = startAtValue == null ? now : Long.parseLong(startAtValue);
+
+        // 已放行到的排队号：按时间线性推进，无定时器依赖
+        long elapsedSeconds = Math.max(0L, (now - startAt) / 1000);
+        long currentSeq = elapsedSeconds * queue.getQueuePerSecond();
+
+        Long queuedCount = stringRedisTemplate.opsForZSet()
+            .zCard(RedisKeys.SELECTION_QUEUE + courseId);
+
+        boolean tokenValid = tokenTtl != null && tokenTtl > 0;
+        // 已叫到我（排队号不超过当前进度），可立即发起选课
+        boolean admitted = mySeq <= currentSeq;
+
+        QueueStatusVO vo = new QueueStatusVO();
+        vo.setCourseId(courseId);
+        vo.setMySeq(mySeq);
+        vo.setCurrentSeq(currentSeq);
+        vo.setQueuedCount(queuedCount == null ? 0L : queuedCount);
+        vo.setAheadCount(admitted ? 0L : mySeq - currentSeq);
+        vo.setTokenValid(tokenValid);
+        vo.setTokenTtlSeconds(tokenTtl == null ? 0L : tokenTtl);
+
+        long waitSeconds = admitted ? 0L
+            : (long) Math.ceil((mySeq - currentSeq) / (double) queue.getQueuePerSecond());
+        vo.setEstimatedWaitSeconds(waitSeconds);
+        vo.setMessage(buildQueueMessage(admitted, tokenValid, waitSeconds));
+        return vo;
+    }
+
+    private String buildQueueMessage(boolean admitted, boolean tokenValid, long waitSeconds) {
+        if (tokenValid && admitted) {
+            return "已叫号，请立即完成选课";
+        }
+        if (!tokenValid) {
+            return "排队令牌已过期，请重新取号";
+        }
+        // 超过 1 分钟改用「分钟」表述，避免「预计 3600 秒」这类不友好文案
+        if (waitSeconds > 60) {
+            return String.format("排队中，预计还需等待 %d 分钟", waitSeconds / 60);
+        }
+        return String.format("排队中，预计 %d 秒后可提交选课", waitSeconds);
     }
 }

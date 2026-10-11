@@ -106,6 +106,35 @@ public class RedisConfig {
     }
 
     /**
+     * 选课排队取号脚本：幂等发号 + 队列容量控制。
+     *
+     * <p>调用时 KEYS 依次为 {@code [qstartKey, seqKey, queueKey, tokenKey]}，
+     * ARGV 依次为 {@code [studentId, maxQueueSize, tokenTtlSeconds, nowMillis]}，
+     * 返回 {@code -1} 表示队列已满，正数表示排队号。</p>
+     */
+    @Bean
+    public DefaultRedisScript<Long> acquireQueueTokenScript() {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("lua/acquire_queue_token.lua"));
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    /**
+     * 排队令牌释放脚本：放弃排队或选课成功后清理占位。
+     *
+     * <p>调用时 KEYS 为 {@code [queueKey, tokenKey]}，ARGV 为 {@code [studentId]}，
+     * 幂等，重复调用不报错。</p>
+     */
+    @Bean
+    public DefaultRedisScript<Long> releaseQueueTokenScript() {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("lua/release_queue_token.lua"));
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    /**
      * Lua 脚本依赖 StringRedisTemplate 执行以保证序列化一致性。
      */
     @Bean

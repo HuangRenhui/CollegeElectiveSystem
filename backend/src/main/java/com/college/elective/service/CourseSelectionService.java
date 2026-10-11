@@ -6,6 +6,7 @@ import com.college.elective.dto.CourseQueryDTO;
 import com.college.elective.entity.Course;
 import com.college.elective.entity.CourseSelection;
 import com.college.elective.vo.ConflictVO;
+import com.college.elective.vo.QueueStatusVO;
 import com.college.elective.vo.SelectionResultVO;
 
 import java.util.List;
@@ -13,9 +14,7 @@ import java.util.List;
 /**
  * 选课服务。
  *
- * <p>本接口定义选课核心业务的能力契约，实现类尚未实现，需由开发者补充编码。
- * 请参考项目文档 {@code docs/待实现功能.md} 中的「选课模块」章节，
- * 关键设计要点如下：</p>
+ * <p>本接口定义选课核心业务的能力契约，关键设计要点如下：</p>
  *
  * <ul>
  *   <li><b>并发控制</b>：通过 Redis + Lua 脚本原子化完成「查重 → 余量校验 → 扣减 → 写入已选集合」，
@@ -24,8 +23,10 @@ import java.util.List;
  *   <li><b>时间冲突</b>：基于「星期 + 节次区间 + 周次区间 + 单双周」四维判定，
  *       排课数据通过 {@code CourseScheduleMapper} 获取。</li>
  *   <li><b>数据一致性</b>：Redis 为余量主数据，数据库 {@code course.selected_count} 为兜底；
- *       落库失败需回滚 Redis 预占；定时任务 {@code SelectionSyncTask} 周期校正。</li>
+ *落库失败需回滚 Redis 预占；定时任务 {@code SelectionSyncTask} 周期校正。</li>
  *   <li><b>幂等性</b>：Redis Set 去重 + {@code course_selection} 唯一索引双重保障。</li>
+ *   <li><b>学生选课 vs 教务代选</b>：两者数据正确性校验一致，差异仅在于代选
+ *       <b>跳过</b>选课开关与时间窗口（详见 {@code docs/架构设计.md} 5.2 节）。</li>
  * </ul>
  */
 public interface CourseSelectionService extends IService<CourseSelection> {
@@ -109,6 +110,35 @@ public interface CourseSelectionService extends IService<CourseSelection> {
      * @return 分页课程列表
      */
     PageResult<Course> pageAvailableCourses(CourseQueryDTO query, Long studentId);
+
+    /**
+     * 选课排队取号（高峰期削峰）。
+     *
+     * <p>排队解决的是「峰值请求同时穿透到数据库」，
+     * 与 Lua 脚本防超选是<b>两个不同层次的保护</b>，不可相互替代。</p>
+     *
+     * @param courseId 课程ID
+     * @return 排队状态（排队号、当前叫号进度、预计等待秒数）
+     */
+    QueueStatusVO requestQueue(Long courseId);
+
+    /**
+     * 查询排队进度（供前端轮询）。
+     *
+     * <p>前端应以此接口返回的 {@code tokenValid} 与排队号关系
+     * 为准决定何时发起选课，不要自行按等待时间猜测。</p>
+     *
+     * @param courseId 课程ID
+     * @return 排队状态
+     */
+    QueueStatusVO queryQueueStatus(Long courseId);
+
+    /**
+     * 放弃排队（主动退出或选课成功后清理占位）。
+     *
+     * @param courseId 课程ID
+     */
+    void cancelQueue(Long courseId);
 
     /**
      * 查询指定学生的选课记录（管理员视角）。
