@@ -13,6 +13,30 @@
     </view>
   </picker>
 
+  <!-- 加载态：统计概览骨架 + 成绩卡片骨架，形状贴合真实内容避免跳动 -->
+  <block wx:if="{{loading}}">
+    <view class="stats">
+      <view class="stats__item card" wx:for="{{[1,2,3,4]}}" wx:key="*this">
+        <view class="skeleton__line" style="width:70%;height:40rpx;margin:0 auto 16rpx"></view>
+        <view class="skeleton__line" style="width:50%;height:24rpx;margin:0 auto"></view>
+      </view>
+    </view>
+
+    <view class="list-title">
+      <text>成绩明细</text>
+    </view>
+
+    <view class="skeleton__card" wx:for="{{[1,2,3]}}" wx:key="*this">
+      <view class="skeleton__card-head">
+        <view class="skeleton__line skeleton__line--title" style="margin-bottom:0"></view>
+        <view class="skeleton__line" style="width:90rpx;margin-bottom:0"></view>
+      </view>
+      <view class="skeleton__line skeleton__line--short"></view>
+      <view class="skeleton__line skeleton__line--last" style="width:70%"></view>
+    </view>
+  </block>
+
+  <block wx:else>
   <!-- 统计概览 -->
   <view class="stats">
     <view class="stats__item card">
@@ -38,9 +62,7 @@
     <text class="text-muted" wx:if="{{grades.length}}">共 {{grades.length}} 门</text>
   </view>
 
-  <view wx:if="{{loading}}" class="empty">加载中...</view>
-
-  <block wx:elif="{{grades.length > 0}}">
+  <block wx:if="{{grades.length > 0}}">
     <view class="card grade" wx:for="{{grades}}" wx:key="courseCode">
       <view class="grade__head">
         <view class="grade__name">{{item.courseName}}</view>
@@ -73,4 +95,5 @@
     <view>暂无已发布成绩</view>
     <view class="text-muted">成绩需教师发布后才会展示</view>
   </view>
+  </block>
 </view>

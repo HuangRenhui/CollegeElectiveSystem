@@ -2,6 +2,7 @@ const app = getApp()
 const studentApi = require('../../api/student')
 const commonApi = require('../../api/common')
 const dict = require('../../utils/dict')
+const share = require('../../utils/share')
 
 Page({
   data: {
@@ -124,5 +125,29 @@ Page({
       semesterId: semester ? semester.id : null
     })
     this.loadTimetable()
+  },
+
+  // ---------------- 分享 ----------------
+
+  /**
+   * 分享给好友。
+   *
+   * 回调是同步的，只能使用 data 中已有的数据，不能在此发起请求。
+   */
+  onShareAppMessage() {
+    return share.shareTimetable()
+  },
+
+  /**
+   * 分享到朋友圈。
+   *
+   * 朋友圈分享不支持带参数的 path，只能使用 query，
+   * 因此课表页无需传参。
+   */
+  onShareTimeline() {
+    return {
+      title: '我的课表',
+      query: ''
+    }
   }
 })

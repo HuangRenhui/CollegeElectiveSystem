@@ -1,0 +1,72 @@
+<view class="page-container">
+  <!-- 加载态：骨架屏，形状贴合「图表 + 概览卡」结构 -->
+  <block wx:if="{{loading}}">
+    <view class="chart-skeleton"></view>
+    <view class="skeleton__card" wx:for="{{[1,2]}}" wx:key="*this">
+      <view class="skeleton__line skeleton__line--short"></view>
+      <view class="skeleton__line skeleton__line--last" style="width:80%"></view>
+    </view>
+  </block>
+
+  <block wx:elif="{{empty}}">
+    <view class="empty">
+      <view class="empty__icon">📈</view>
+      <view>暂无评价数据</view>
+      <view class="text-muted">完成课程评价后即可查看评分趋势与维度分布</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <!-- Canvas 2D：雷达图 + 折线图在同一画布内绘制 -->
+    <view class="chart-card">
+      <canvas
+        type="2d"
+        id="trendCanvas"
+        style="width: 340px; height: 480px;"
+        class="chart-canvas"
+      ></canvas>
+    </view>
+
+    <!-- 概览 -->
+    <view class="stats">
+      <view class="stats__item card">
+        <view class="stats__value">{{trendList.length}}</view>
+        <view class="stats__label">评价学期数</view>
+      </view>
+      <view class="stats__item card">
+        <view class="stats__value stats__value--success">{{latestScore}}</view>
+        <view class="stats__label">最新综合评分</view>
+      </view>
+    </view>
+
+    <!-- 各维度明细 -->
+    <view class="list-title">
+      <text>最新学期维度得分</text>
+    </view>
+
+    <view class="card dim" wx:for="{{latestDimensions}}" wx:key="label">
+      <view class="dim__head">
+        <text class="dim__label">{{item.label}}</text>
+        <text class="dim__score">{{item.scoreText}}</text>
+      </view>
+      <view class="dim__bar">
+        <view class="dim__bar-inner" style="width: {{item.percent}}%"></view>
+      </view>
+    </view>
+
+    <!-- 学期列表 -->
+    <view class="list-title">
+      <text>学期明细</text>
+    </view>
+
+    <view class="card term" wx:for="{{trendList}}" wx:key="semesterId">
+      <view class="term__head">
+        <text class="term__name">{{item.semesterName}}</text>
+        <text class="term__score">{{item.averageScore}}</text>
+      </view>
+      <view class="term__meta text-muted">
+        <text>评价 {{item.courseCount}} 门课程</text>
+      </view>
+    </view>
+  </block>
+</view>

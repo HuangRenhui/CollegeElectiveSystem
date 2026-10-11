@@ -131,6 +131,21 @@ function noticeTypeTheme(value) {
   return (NOTICE_TYPE_MAP[value] || NOTICE_TYPE_MAP.SYSTEM).theme
 }
 
+// ---------------------------- 订阅消息 ----------------------------
+/** 订阅场景，与后端 MessageSubscribeService.SCENE_* 对应 */
+const SCENES = {
+  /** 评价通道开放提醒 */
+  REVIEW_OPEN: 'REVIEW_OPEN',
+  /** 成绩发布提醒 */
+  GRADE_PUBLISH: 'GRADE_PUBLISH'
+}
+
+/** 场景对应的提示文案（引导授权时展示） */
+const SCENE_TIPS = {
+  REVIEW_OPEN: '评教通道已开放时，第一时间提醒你',
+  GRADE_PUBLISH: '老师发布成绩后，第一时间提醒你'
+}
+
 module.exports = {
   REVIEW_STATUS_MAP,
   reviewStatusText,
@@ -151,5 +166,7 @@ module.exports = {
   weekTypeText,
   NOTICE_TYPE_MAP,
   noticeTypeText,
-  noticeTypeTheme
+  noticeTypeTheme,
+  SCENES,
+  SCENE_TIPS
 }

@@ -1,6 +1,7 @@
 const app = getApp()
 const reviewApi = require('../../../api/review')
 const dict = require('../../../utils/dict')
+const subscribe = require('../../../utils/subscribe')
 
 /** 构造全空的五颗星，作为 dimensions 初始值 */
 function buildDimensions() {
@@ -214,6 +215,15 @@ Page({
       })
 
       wx.showToast({ title: isEdit ? '评价已更新' : '提交成功', icon: 'success' })
+
+      // 提交成功后顺带引导订阅「成绩发布提醒」。
+      // 此刻用户刚完成评教、正关心后续流程，是授权意愿最高的时机；
+      // 不在启动或进入页面时打扰，避免被习惯性拒绝。
+      subscribe.guideSubscribe(
+        subscribe.SCENES.GRADE_PUBLISH,
+        dict.SCENE_TIPS.GRADE_PUBLISH
+      )
+
       setTimeout(() => {
         wx.navigateBack()
       }, 800)

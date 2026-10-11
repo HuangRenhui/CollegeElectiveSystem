@@ -1,6 +1,7 @@
 const app = getApp()
 const reviewApi = require('../../../api/review')
 const commonApi = require('../../../api/common')
+const share = require('../../../utils/share')
 
 Page({
   data: {
@@ -106,5 +107,25 @@ Page({
 
   goMine() {
     wx.navigateTo({ url: '/pages/review/mine/index' })
+  },
+
+  /** 查看我的评价趋势（雷达图 + 学期折线） */
+  goTrend() {
+    wx.navigateTo({ url: '/pages/review/trend/index' })
+  },
+
+  // ---------------- 分享 ----------------
+
+  /** 分享给好友 */
+  onShareAppMessage() {
+    return share.shareReview()
+  },
+
+  /** 分享到朋友圈（不支持 path 带参数） */
+  onShareTimeline() {
+    return {
+      title: '一起来评教',
+      query: ''
+    }
   }
 })

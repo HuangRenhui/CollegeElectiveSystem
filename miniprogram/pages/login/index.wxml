@@ -5,7 +5,51 @@
     <view class="login__subtitle">学生端 · 教学评价 / 课表 / 成绩</view>
   </view>
 
-  <view class="login__form">
+  <!-- 绑定态：首次微信登录需补充学号密码 -->
+  <view wx:if="{{needBind}}" class="login__form">
+    <view class="login__bind-tip">
+      <view class="login__bind-title">首次使用 · 绑定学号</view>
+      <view class="login__bind-desc">为保障账号安全，请验证学号与密码后完成绑定</view>
+    </view>
+
+    <view class="field">
+      <view class="field__label">学号</view>
+      <input
+        class="field__input"
+        type="text"
+        value="{{username}}"
+        placeholder="请输入学号"
+        placeholder-class="field__placeholder"
+        data-field="username"
+        bindinput="onInput"
+      />
+    </view>
+
+    <view class="field">
+      <view class="field__label">密码</view>
+      <input
+        class="field__input"
+        password
+        value="{{password}}"
+        placeholder="请输入密码"
+        placeholder-class="field__placeholder"
+        data-field="password"
+        bindinput="onInput"
+        bindconfirm="handleBind"
+      />
+    </view>
+
+    <view
+      class="btn btn--primary login__submit {{loading ? 'btn--disabled' : ''}}"
+      bindtap="handleBind"
+    >
+      {{loading ? '绑定中...' : '绑定并登录'}}
+    </view>
+    <view class="login__cancel" bindtap="cancelBind">返回其他登录方式</view>
+  </view>
+
+  <!-- 常规态：密码登录 / 微信一键登录 -->
+  <view wx:else class="login__form">
     <view class="field">
       <view class="field__label">账号</view>
       <input
@@ -38,6 +82,16 @@
       bindtap="handleLogin"
     >
       {{loading ? '登录中...' : '登 录'}}
+    </view>
+
+    <!-- 微信一键登录：仅在后端配置了 AppID/AppSecret 时展示 -->
+    <view
+      wx:if="{{wxEnabled}}"
+      class="btn btn--wx login__wx {{loading ? 'btn--disabled' : ''}}"
+      bindtap="handleWxLogin"
+    >
+      <text class="login__wx-icon">微</text>
+      <text>微信一键登录</text>
     </view>
 
     <view class="login__demo">

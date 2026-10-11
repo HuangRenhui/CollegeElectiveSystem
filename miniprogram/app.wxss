@@ -3,6 +3,10 @@
  *
  * 小程序 WXSS 支持 CSS 变量，统一在 page 上定义，各页面直接引用。
  */
+
+/* 骨架屏基础样式，供各页面加载态复用 */
+@import './styles/skeleton.wxss';
+
 page {
   --primary: #409eff;
   --success: #67c23a;

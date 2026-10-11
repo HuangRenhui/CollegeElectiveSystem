@@ -1,0 +1,86 @@
+/**
+ * 骨架屏样式（在 app.wxss 中通过 @import 引入，全局可用）。
+ *
+ * 设计要点：
+ *   1. 形状贴近真实内容，避免加载完成时布局跳动；
+ *   2. 动画周期 1.4s 较为舒适，过快显得闪烁、过慢显得卡顿；
+ *   3. 只对 background-position 做动画（GPU 友好），避免动画 width/height。
+ */
+
+.skeleton__row {
+  display: flex;
+  padding: 28rpx 32rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.skeleton__avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 12rpx;
+  flex-shrink: 0;
+}
+
+.skeleton__content {
+  flex: 1;
+  margin-left: 24rpx;
+  overflow: hidden;
+}
+
+/* 基础灰块 + 流光动画 */
+.skeleton__avatar,
+.skeleton__line {
+  background-color: #f0f0f0;
+  background-image: linear-gradient(
+    90deg,
+    #f0f0f0 25%,
+    #e6e6e6 37%,
+    #f0f0f0 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-flow 1.4s ease infinite;
+}
+
+.skeleton__line {
+  height: 28rpx;
+  border-radius: 6rpx;
+  margin-bottom: 18rpx;
+}
+
+.skeleton__line--title {
+  width: 46%;
+  height: 32rpx;
+}
+
+.skeleton__line--short {
+  width: 62%;
+}
+
+.skeleton__line--last {
+  margin-bottom: 0;
+}
+
+/* 卡片式骨架（成绩、评价列表用） */
+.skeleton__card {
+  padding: 32rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.skeleton__card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+
+@keyframes skeleton-flow {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}

@@ -40,6 +40,15 @@ function listCourseReviews(courseId, params) {
   return get(`/student/courses/${courseId}/reviews`, params)
 }
 
+/**
+ * 我的评价趋势（按学期聚合各维度均分）。
+ *
+ * 仅统计已审核通过的评价，用于绘制雷达图与趋势折线图。
+ */
+function getMyReviewTrend() {
+  return get('/student/reviews/trend')
+}
+
 module.exports = {
   listPendingReviews,
   submitReview,
@@ -47,5 +56,6 @@ module.exports = {
   getMyReview,
   deleteMyReview,
   getCourseReviewSummary,
-  listCourseReviews
+  listCourseReviews,
+  getMyReviewTrend
 }

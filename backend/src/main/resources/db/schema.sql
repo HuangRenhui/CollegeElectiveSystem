@@ -174,6 +174,8 @@ CREATE TABLE `semester`
     `end_date`          DATE        NOT NULL COMMENT '学期结束日期',
     `select_start_time` DATETIME             DEFAULT NULL COMMENT '选课开放时间',
     `select_end_time`   DATETIME             DEFAULT NULL COMMENT '选课截止时间',
+    `review_start_time` DATETIME             DEFAULT NULL COMMENT '评价开放开始时间（NULL 表示不限制）',
+    `review_end_time`   DATETIME             DEFAULT NULL COMMENT '评价开放结束时间（NULL 表示不限制）',
     `total_weeks`       INT         NOT NULL DEFAULT 20 COMMENT '总教学周数',
     `is_current`        TINYINT     NOT NULL DEFAULT 0 COMMENT '是否当前学期：0-否 1-是',
     `status`            TINYINT     NOT NULL DEFAULT 0 COMMENT '状态：0-未开始 1-选课中 2-进行中 3-已结束',
@@ -400,5 +402,53 @@ CREATE TABLE `sys_log`
     KEY `idx_create_time` (`create_time`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='系统操作日志表';
+
+-- ---------------------------------------------------------------------
+-- 微信身份绑定表
+--   说明：独立于 sys_user，便于同一系统账号绑定多个微信应用
+--        （公众号 + 小程序），也避免侵入核心账号表。
+--   安全：一个微信身份只能绑定一个系统账号（唯一索引兜底）。
+-- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS `user_wx_bind`;
+CREATE TABLE `user_wx_bind`
+(
+    `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `user_id`     BIGINT       NOT NULL COMMENT '系统用户ID',
+    `wx_appid`    VARCHAR(64)  NOT NULL COMMENT '微信应用AppID',
+    `open_id`     VARCHAR(64)  NOT NULL COMMENT '微信OpenID',
+    `union_id`    VARCHAR(64)           DEFAULT NULL COMMENT '微信UnionID（开放平台）',
+    `nickname`    VARCHAR(64)           DEFAULT NULL COMMENT '微信昵称',
+    `avatar_url`  VARCHAR(255)          DEFAULT NULL COMMENT '微信头像地址',
+    `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '绑定时间',
+    `deleted`     TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_appid_openid` (`wx_appid`, `open_id`),
+    KEY `idx_user_id` (`user_id`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='微信身份绑定表';
+
+-- ---------------------------------------------------------------------
+-- 消息订阅关系表
+--   说明：微信订阅消息「一次授权只能发一条」，故记录剩余可发送次数，
+--        每次授权 +1、每发送 -1，归零后需重新引导用户授权。
+--   续期设计：小程序端在用户需要通知的时刻再引导，不在启动时打扰。
+-- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS `message_subscribe`;
+CREATE TABLE `message_subscribe`
+(
+    `id`            BIGINT      NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `user_id`       BIGINT      NOT NULL COMMENT '用户ID',
+    `template_id`   VARCHAR(64) NOT NULL COMMENT '微信订阅消息模板ID',
+    `scene`         VARCHAR(32) NOT NULL COMMENT '场景：REVIEW_OPEN-评价开放 GRADE_PUBLISH-成绩发布',
+    `remain_count`  INT         NOT NULL DEFAULT 0 COMMENT '剩余可发送次数',
+    `expire_time`   DATETIME    NOT NULL COMMENT '订阅关系过期时间（微信默认7天）',
+    `create_time`   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '订阅时间',
+    `update_time`   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`       TINYINT     NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_user_scene` (`user_id`, `scene`),
+    KEY `idx_expire_time` (`expire_time`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='消息订阅关系表';
 
 SET FOREIGN_KEY_CHECKS = 1;

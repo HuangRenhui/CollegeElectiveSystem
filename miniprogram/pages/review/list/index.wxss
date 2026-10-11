@@ -111,3 +111,30 @@
   margin-top: 8rpx;
   font-size: 24rpx;
 }
+
+/* ---------------- 趋势入口 ---------------- */
+
+.trend-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 32rpx;
+}
+
+.trend-entry__title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.trend-entry__desc {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: var(--text-secondary);
+}
+
+.trend-entry__arrow {
+  font-size: 44rpx;
+  color: var(--text-placeholder);
+  line-height: 1;
+}

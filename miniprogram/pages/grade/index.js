@@ -2,6 +2,8 @@ const app = getApp()
 const studentApi = require('../../api/student')
 const commonApi = require('../../api/common')
 const dict = require('../../utils/dict')
+const share = require('../../utils/share')
+const subscribe = require('../../utils/subscribe')
 
 Page({
   data: {
@@ -63,11 +65,31 @@ Page({
         grades,
         scoreColorValue: dict.scoreColor(report.averageScore)
       })
+
+      // 成绩加载成功后，顺带引导订阅「成绩发布提醒」。
+      // 此刻用户正处于关心成绩的语境中，授权意愿最高；
+      // guideSubscribe 内部会检查剩余次数，已订阅时不会打扰
+      this.maybeGuideSubscribe()
     } catch (err) {
       this.setData({ report: {}, grades: [], scoreColorValue: '#909399' })
     } finally {
       this.setData({ loading: false })
     }
+  },
+
+  /**
+   * 引导订阅成绩发布提醒。
+   *
+   * 每个页面实例只引导一次，避免用户反复切学期时被连续弹窗打扰。
+   */
+  maybeGuideSubscribe() {
+    if (this.subscribeGuided) return
+    this.subscribeGuided = true
+
+    subscribe.guideSubscribe(
+      subscribe.SCENES.GRADE_PUBLISH,
+      dict.SCENE_TIPS.GRADE_PUBLISH
+    )
   },
 
   onSemesterChange(e) {
@@ -78,5 +100,20 @@ Page({
       semesterId: semester ? semester.id : null
     })
     this.loadReport()
+  },
+
+  // ---------------- 分享 ----------------
+
+  /** 分享给好友 */
+  onShareAppMessage() {
+    return share.shareGrade()
+  },
+
+  /** 分享到朋友圈（不支持 path 带参数） */
+  onShareTimeline() {
+    return {
+      title: '我的成绩单',
+      query: ''
+    }
   }
 })

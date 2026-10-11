@@ -17,7 +17,18 @@
     本学期共 <text class="summary-bar__num">{{total}}</text> 门课程
   </view>
 
-  <view wx:if="{{loading}}" class="empty">加载中...</view>
+  <!-- 加载态：骨架屏。形状贴近真实课程卡片，避免加载完成时布局跳动 -->
+  <block wx:if="{{loading}}">
+    <view class="skeleton__card" wx:for="{{[1,2,3]}}" wx:key="*this">
+      <view class="skeleton__card-head">
+        <view class="skeleton__line skeleton__line--title" style="margin-bottom:0"></view>
+        <view class="skeleton__line" style="width:100rpx;margin-bottom:0"></view>
+      </view>
+      <view class="skeleton__line skeleton__line--short"></view>
+      <view class="skeleton__line"></view>
+      <view class="skeleton__line skeleton__line--last" style="width:40%"></view>
+    </view>
+  </block>
 
   <block wx:elif="{{groups.length > 0}}">
     <view class="day" wx:for="{{groups}}" wx:key="day">

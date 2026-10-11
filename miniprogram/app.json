@@ -5,6 +5,7 @@
     "pages/review/form/index",
     "pages/review/mine/index",
     "pages/review/detail/index",
+    "pages/review/trend/index",
     "pages/timetable/index",
     "pages/grade/index",
     "pages/notice/index",

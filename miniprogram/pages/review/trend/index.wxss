@@ -1,0 +1,91 @@
+.chart-card {
+  padding: 16rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  margin-bottom: 20rpx;
+  /* 图表区域需固定高度，否则 Canvas 取不到尺寸 */
+  display: flex;
+  justify-content: center;
+}
+
+.chart-canvas {
+  display: block;
+}
+
+/* 图表骨架：高度与真实画布接近，避免加载完成时页面跳动 */
+.chart-skeleton {
+  height: 760rpx;
+  margin-bottom: 20rpx;
+  border-radius: 16rpx;
+  background-color: #f0f0f0;
+  background-image: linear-gradient(90deg, #f0f0f0 25%, #e6e6e6 37%, #f0f0f0 63%);
+  background-size: 400% 100%;
+  animation: skeleton-flow 1.4s ease infinite;
+}
+
+/* ---------------- 维度得分明细 ---------------- */
+
+.dim {
+  padding: 26rpx 32rpx;
+}
+
+.dim__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+
+.dim__label {
+  font-size: 28rpx;
+  color: var(--text-main);
+}
+
+.dim__score {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.dim__bar {
+  height: 12rpx;
+  border-radius: 6rpx;
+  background: var(--border-light);
+  overflow: hidden;
+}
+
+.dim__bar-inner {
+  height: 100%;
+  border-radius: 6rpx;
+  background: linear-gradient(90deg, #79bbff 0%, #409eff 100%);
+  transition: width 0.4s ease;
+}
+
+/* ---------------- 学期明细 ---------------- */
+
+.term {
+  padding: 28rpx 32rpx;
+}
+
+.term__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.term__name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.term__score {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: var(--success);
+}
+
+.term__meta {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+}

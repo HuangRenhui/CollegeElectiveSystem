@@ -11,6 +11,15 @@
     </view>
   </view>
 
+  <!-- 趋势入口：数据不足时后端返回空列表，页面会展示空态 -->
+  <view class="trend-entry card" bindtap="goTrend">
+    <view class="trend-entry__main">
+      <view class="trend-entry__title">我的评价趋势</view>
+      <view class="trend-entry__desc">查看各维度评分分布与学期变化</view>
+    </view>
+    <view class="trend-entry__arrow">›</view>
+  </view>
+
   <!-- 学期筛选 -->
   <picker
     mode="selector"
@@ -27,7 +36,17 @@
   </picker>
 
   <!-- 待评价列表 -->
-  <view wx:if="{{loading}}" class="empty">加载中...</view>
+  <!-- 加载态：骨架屏，形状贴合课程卡片 -->
+  <block wx:if="{{loading}}">
+    <view class="skeleton__card" wx:for="{{[1,2,3]}}" wx:key="*this">
+      <view class="skeleton__card-head">
+        <view class="skeleton__line skeleton__line--title" style="margin-bottom:0"></view>
+        <view class="skeleton__line" style="width:100rpx;margin-bottom:0"></view>
+      </view>
+      <view class="skeleton__line skeleton__line--short"></view>
+      <view class="skeleton__line skeleton__line--last" style="width:50%"></view>
+    </view>
+  </block>
 
   <block wx:elif="{{pendingList.length > 0}}">
     <view class="card course" wx:for="{{pendingList}}" wx:key="selectionId">
