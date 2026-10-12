@@ -43,6 +43,12 @@ public class Semester extends BaseEntity {
     @Schema(description = "选课截止时间")
     private LocalDateTime selectEndTime;
 
+    @Schema(description = "评价开放开始时间（NULL 表示不限制）")
+    private LocalDateTime reviewStartTime;
+
+    @Schema(description = "评价开放结束时间（NULL 表示不限制）")
+    private LocalDateTime reviewEndTime;
+
     @Schema(description = "总教学周数")
     private Integer totalWeeks;
 
@@ -59,5 +65,21 @@ public class Semester extends BaseEntity {
         LocalDateTime now = LocalDateTime.now();
         return selectStartTime != null && selectEndTime != null
                 && !now.isBefore(selectStartTime) && !now.isAfter(selectEndTime);
+    }
+
+    /**
+     * 当前时间是否处于评价开放窗口内。
+     *
+     * <p><b>未配置时视为不限制</b>（返回 {@code true}），以保持与评价窗口
+     * 功能上线前一致的行为，避免因教务漏配时间导致学生无法评价。</p>
+     *
+     * @return true 表示允许提交评价
+     */
+    public boolean inReviewPeriod() {
+        if (reviewStartTime == null || reviewEndTime == null) {
+            return true;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        return !now.isBefore(reviewStartTime) && !now.isAfter(reviewEndTime);
     }
 }

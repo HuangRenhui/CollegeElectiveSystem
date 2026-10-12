@@ -52,32 +52,31 @@ scheduling, grading, course evaluation, notices and academic statistics. It focu
 
 ## Current Status
 
-The framework, infrastructure and most business modules are complete. The **enrollment** module's
-service methods are **fully implemented** (only admin-assisted enrollment remains); the **grade**
-module is **partially implemented** — query methods work, grade input / publishing / revoking are
-still pending. Their API contracts, data models, frontend pages and infrastructure are all in place.
+The framework, infrastructure and all business modules are complete. Both the **enrollment** module
+(11 methods, including admin-assisted enrollment) and the **grade** module (6 methods, including input,
+publishing and revoking) are **fully implemented**. Their controllers inject services directly and are
+ready for integration testing.
 
 | Module | Status | Notes |
 | --- | --- | --- |
 | Auth & Profile | ✅ Ready | JWT login, authorization, password management |
-| Course Management | ✅ Ready | Course CRUD, scheduling, conflict checks, statistics |
-| Student / Teacher Management | ✅ Ready | Profile and account management |
+| Course Management | ✅ Ready | Course CRUD, scheduling, conflict checks, statistics, cache preload |
+| Student / Teacher Management | ✅ Ready | Profile and account management, admin-assisted enrollment |
 | Base Info / Semester / Notice / Log | ✅ Ready | Full academic administration |
-| **Enrollment** | ✅ **Ready** | Enroll / withdraw (Redis Lua reservation + cache refill + DB rollback), course browsing, conflict pre-check, my selections, cache preload and count sync; only admin-assisted enrollment pending |
-| **Grade** | 🚧 **Partial** | Queries work (grade page, input sheet, report); grade input and publishing pending |
+| **Enrollment** | ✅ **Ready** | Enroll / withdraw (Redis Lua reservation + cache refill + DB rollback), course browsing, conflict pre-check, my selections, cache preload, count sync, admin-assisted enrollment |
+| **Grade** | ✅ **Ready** | Grade page, input sheet, report & GPA statistics, batch input, publishing and revoking |
 | **Course Evaluation** | ✅ **Ready** | Student submission, teacher view, admin moderation & statistics |
 | **Student Mini Program** | ✅ **Ready** | Evaluation, timetable and grade queries (native WeChat Mini Program) |
 
 > The **Course Evaluation** module (student rating of teaching) is fully implemented across
 > backend and frontend. See
-> [Pending Features § 4](./docs/待实现功能.md#4-教学评价模块) and
+> [Implementation Notes § 4](./docs/功能实现说明.md#4-教学评价模块) and
 > [API Reference § 13-15](./docs/接口文档.md#13-教学评价).
 >
 > A **student WeChat Mini Program** (`miniprogram/`) is also provided, reusing the existing
 > backend APIs with no additional backend endpoints. See [Mini Program README](./miniprogram/README.md).
 
-👉 **Implementation guide: [Pending Features](./docs/待实现功能.md)**
-(business rules, Redis strategy, algorithm references, acceptance checklist).
+👉 **Business rules and acceptance checklist: [Implementation Notes](./docs/功能实现说明.md)**
 
 ---
 
@@ -300,9 +299,10 @@ CollegeElectiveSystem/
 │   ├── README.md                           # Setup instructions
 │   ├── app.js / app.json / app.wxss        # Entry, page registry, global styles
 │   ├── config/index.js                     # baseUrl & cache keys (change before deploy)
-│   ├── utils/                              # request wrapper, dictionaries
-│   ├── api/                                # auth / common / review / student
-│   └── pages/                              # login, review (4 pages), timetable, grade, mine
+│   ├── styles/                             # Skeleton-screen styles (global @import)
+│   ├── utils/                              # request wrapper, dictionaries, share, subscribe
+│   ├── api/                                # auth / common / review / student / wx
+│   └── pages/                              # login, review (5 pages), timetable, grade, notice, mine
 ├── docs/                                    # Documentation
 ├── docker-compose.yml
 ├── README.md
@@ -322,6 +322,7 @@ backend APIs — no additional service needs to be deployed.
 | Write Evaluation | Four-dimension star rating (half-star), quick tags, anonymous toggle, confirmation |
 | My Evaluations | Edit and withdraw submitted evaluations |
 | Course Evaluations | Average score, four-dimension bars, anonymous details (infinite scroll) |
+| Evaluation Trends | Radar chart of the four dimensions + per-semester line chart (hand-drawn on Canvas, no third-party library) |
 | Public Notices | Notice list with unread dots, "unread only" and "mark all read"; tap to expand |
 | My Timetable | Grouped by weekday with sections, weeks and location |
 | My Grades | Total / earned credits, average score, GPA + detail list |
@@ -333,7 +334,7 @@ and enable *"Skip domain validation"* under local settings. The API base URL is 
 
 > Full instructions: [Mini Program README](./miniprogram/README.md).
 > Capabilities requiring backend support (WeChat login, subscription messages) are documented in
-> [Pending Features § 4.7.1](./docs/待实现功能.md#471-需要后端支持的增强功能待实现).
+> [Implementation Notes § 4.7.1](./docs/功能实现说明.md#471-小程序增强能力已实现).
 
 ---
 
@@ -421,8 +422,8 @@ Use the **Authorize** button and paste the `token` returned by the login API to 
 | 3001-3012 | Course & enrollment errors |
 | 4001-4004 | Grade errors |
 | 5001-5005 | System & data errors |
-| 5006 | Feature not implemented yet (returned by Enrollment / Grade before completion) |
-| 6001-6005 | Course evaluation errors |
+| 6001-6006 | Course evaluation errors (6006: evaluation window closed) |
+| 7001-7006 | WeChat mini program errors |
 
 ---
 
@@ -578,7 +579,7 @@ Released under the [MIT License](./LICENSE).
 
 ## Related Documents
 
-- [Pending Features](./docs/待实现功能.md) — enrollment & grade implementation guide, course evaluation reference
+- [Implementation Notes](./docs/功能实现说明.md) — enrollment & grade business rules, course evaluation reference
 - [Architecture Design](./docs/架构设计.md)
 - [Database Design](./docs/数据库设计.md)
 - [API Reference](./docs/接口文档.md)

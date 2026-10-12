@@ -57,4 +57,13 @@ public class AdminReviewController {
     public Result<ReviewStatisticsVO> statistics(@RequestParam(required = false) Long semesterId) {
         return Result.success(reviewService.getReviewStatistics(semesterId));
     }
+
+    @Operation(summary = "推送评价开放提醒",
+            description = "定向提醒「已修完但未评价」的学生，避免打扰已完成评价的同学")
+    @OperationLog(module = "教学评价", operation = "推送评价提醒")
+    @PostMapping("/notify-open")
+    public Result<Integer> notifyOpen(@RequestParam(required = false) Long semesterId) {
+        int count = reviewService.notifyReviewOpen(semesterId);
+        return Result.success("已推送 " + count + " 人", count);
+    }
 }

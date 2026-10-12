@@ -25,6 +25,21 @@ export function checkConflict(courseId) {
   return request({ url: `/student/courses/${courseId}/conflict`, method: 'get' })
 }
 
+/** 选课排队取号（高峰期削峰；未启用排队时返回可直接选课的状态） */
+export function requestQueue(courseId) {
+  return request({ url: `/student/courses/${courseId}/queue`, method: 'post' })
+}
+
+/** 查询排队进度（前端每 2-3 秒轮询一次） */
+export function queryQueue(courseId) {
+  return request({ url: `/student/courses/${courseId}/queue`, method: 'get' })
+}
+
+/** 放弃排队 */
+export function cancelQueue(courseId) {
+  return request({ url: `/student/courses/${courseId}/queue`, method: 'delete' })
+}
+
 /** 我的选课记录 */
 export function listMySelections(params) {
   return request({ url: '/student/selections', method: 'get', params })

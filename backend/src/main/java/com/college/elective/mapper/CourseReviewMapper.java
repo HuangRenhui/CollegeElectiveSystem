@@ -7,6 +7,7 @@ import com.college.elective.entity.CourseReview;
 import com.college.elective.vo.CourseReviewSummaryVO;
 import com.college.elective.vo.PendingReviewVO;
 import com.college.elective.vo.ReviewStatisticsVO;
+import com.college.elective.vo.ReviewTrendVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -72,4 +73,26 @@ public interface CourseReviewMapper extends BaseMapper<CourseReview> {
      * 检查学生的选课记录是否已评价。
      */
     Long countBySelectionId(@Param("selectionId") Long selectionId);
+
+    /**
+     * 按学期聚合某学生被评价的各维度均分（用于小程序端绘制趋势图）。
+     *
+     * <p><b>只统计已审核通过（status = 2）的评价</b>——
+     * 管理员驳回或隐藏的数据不应出现在学生面前。</p>
+     *
+     * @param studentId 被评价学生ID
+     * @return 按学期升序的聚合结果
+     */
+    List<ReviewTrendVO> selectStudentReviewTrend(@Param("studentId") Long studentId);
+
+    /**
+     * 查询「已修完但仍未评价」的学生ID列表（用于评价开放提醒）。
+     *
+     * <p>供订阅消息批量推送使用：找出有评价资格却还没评价的学生，
+     * 向其推送「评价已开放」的提醒。</p>
+     *
+     * @param semesterId 学期ID
+     * @return 学生ID列表
+     */
+    List<Long> selectStudentsWithPendingReviews(@Param("semesterId") Long semesterId);
 }

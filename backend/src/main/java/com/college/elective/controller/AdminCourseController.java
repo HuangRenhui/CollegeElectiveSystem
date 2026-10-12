@@ -2,7 +2,6 @@ package com.college.elective.controller;
 
 import com.college.elective.aspect.OperationLog;
 import com.college.elective.common.PageResult;
-import com.college.elective.common.PendingFeature;
 import com.college.elective.common.Result;
 import com.college.elective.dto.CourseDTO;
 import com.college.elective.dto.CourseQueryDTO;
@@ -14,20 +13,14 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.*;
 
 /**
  * 管理员课程管理接口。
  *
- * <p>缓存预热（{@code preloadCourseCache}）已接入真实实现，可正常使用；
- * 选课人数同步（{@code syncSelectionCount}）尚未实现，
- * 由服务层抛出统一业务异常（业务码 5006）。</p>
- *
- * <p>应用通过 {@link ObjectProvider} 延迟获取该服务，属历史兼容写法；
- * 实现类已摘除待实现标记，判空分支不会再命中。课程 CRUD 与统计可直接使用。</p>
- *
- * @see com.college.elective.service.CourseSelectionService
+ * <p>覆盖管理员侧的课程管理、统计看板与缓存运维：
+ * 课程 CRUD、成绩分布统计、课程缓存预热（{@code preloadCourseCache}）
+ * 与选课人数同步（{@code syncSelectionCount}）。</p>
  */
 @Tag(name = "05-课程管理（管理员）", description = "课程 CRUD、状态变更、缓存预热、统计")
 @RestController
@@ -36,7 +29,7 @@ import org.springframework.web.bind.annotation.*;
 public class AdminCourseController {
 
     private final CourseService courseService;
-    private final ObjectProvider<CourseSelectionService> selectionServiceProvider;
+    private final CourseSelectionService selectionService;
 
     @Operation(summary = "分页查询课程")
     @GetMapping
@@ -85,10 +78,6 @@ public class AdminCourseController {
     @OperationLog(module = "选课管理", operation = "预热课程缓存")
     @PostMapping("/cache/preload")
     public Result<Void> preloadCache(@RequestParam(required = false) Long semesterId) {
-        CourseSelectionService selectionService = PendingFeature.readyOrNull(selectionServiceProvider);
-        if (selectionService == null) {
-            return PendingFeature.result("缓存预热");
-        }
         selectionService.preloadCourseCache(semesterId);
         return Result.success("缓存预热完成", null);
     }
@@ -97,10 +86,6 @@ public class AdminCourseController {
     @OperationLog(module = "选课管理", operation = "同步选课人数")
     @PostMapping("/selection/sync")
     public Result<Void> syncSelection() {
-        CourseSelectionService selectionService = PendingFeature.readyOrNull(selectionServiceProvider);
-        if (selectionService == null) {
-            return PendingFeature.result("同步选课人数");
-        }
         selectionService.syncSelectionCount();
         return Result.success("选课人数同步完成", null);
     }

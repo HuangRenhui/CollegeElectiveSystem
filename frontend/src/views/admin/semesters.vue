@@ -24,6 +24,14 @@
             <span v-else class="text-muted">未设置</span>
           </template>
         </el-table-column>
+        <el-table-column label="评价时间" min-width="300">
+          <template #default="{ row }">
+            <span v-if="row.reviewStartTime">
+              {{ row.reviewStartTime }} ~ {{ row.reviewEndTime }}
+            </span>
+            <span v-else class="text-muted">不限制</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="totalWeeks" label="教学周" width="90" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
@@ -77,9 +85,21 @@
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item label="选课时间" prop="selectRange">
+        <el-form-item label="选课时间" prop="selectRange" required>
           <el-date-picker
             v-model="selectRange"
+            type="datetimerange"
+            :clearable="false"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            range-separator="至"
+            start-placeholder="开放时间"
+            end-placeholder="截止时间"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="评价时间">
+          <el-date-picker
+            v-model="reviewRange"
             type="datetimerange"
             value-format="YYYY-MM-DD HH:mm:ss"
             range-separator="至"
@@ -87,6 +107,7 @@
             end-placeholder="截止时间"
             style="width: 100%"
           />
+          <div class="form-tip">留空表示不限制评价提交时间；设置后仅窗口内可提交评价</div>
         </el-form-item>
         <el-form-item label="总教学周数" prop="totalWeeks">
           <el-input-number v-model="form.totalWeeks" :min="1" :max="30" />
@@ -134,6 +155,8 @@ const form = reactive({
   endDate: '',
   selectStartTime: '',
   selectEndTime: '',
+  reviewStartTime: '',
+  reviewEndTime: '',
   totalWeeks: 20,
   status: 0,
   isCurrent: 0
@@ -141,6 +164,7 @@ const form = reactive({
 
 const dateRange = ref([])
 const selectRange = ref([])
+const reviewRange = ref([])
 
 const rules = {
   semesterCode: [{ required: true, message: '请输入学期编码', trigger: 'blur' }],
@@ -179,6 +203,8 @@ function openForm(row) {
       endDate: row.endDate,
       selectStartTime: row.selectStartTime,
       selectEndTime: row.selectEndTime,
+      reviewStartTime: row.reviewStartTime,
+      reviewEndTime: row.reviewEndTime,
       totalWeeks: row.totalWeeks ?? 20,
       status: row.status ?? 0,
       isCurrent: row.isCurrent ?? 0
@@ -186,6 +212,9 @@ function openForm(row) {
     dateRange.value = row.startDate && row.endDate ? [row.startDate, row.endDate] : []
     selectRange.value = row.selectStartTime && row.selectEndTime
       ? [row.selectStartTime, row.selectEndTime]
+      : []
+    reviewRange.value = row.reviewStartTime && row.reviewEndTime
+      ? [row.reviewStartTime, row.reviewEndTime]
       : []
   } else {
     Object.assign(form, {
@@ -196,12 +225,15 @@ function openForm(row) {
       endDate: '',
       selectStartTime: '',
       selectEndTime: '',
+      reviewStartTime: '',
+      reviewEndTime: '',
       totalWeeks: 20,
       status: 0,
       isCurrent: 0
     })
     dateRange.value = []
     selectRange.value = []
+    reviewRange.value = []
   }
 }
 
@@ -213,12 +245,21 @@ async function submitForm() {
     return
   }
 
+  // 选课时间的 null 语义为「不可选课」（inSelectionPeriod 返回 false），
+  // 且 updateById 受 NOT_NULL 策略影响无法清空，故此处要求必填
+  if (!selectRange.value?.length) {
+    ElMessage.error('请选择选课时间')
+    return
+  }
+
   const payload = {
     ...form,
     startDate: dateRange.value[0],
     endDate: dateRange.value[1],
     selectStartTime: selectRange.value?.[0] || null,
-    selectEndTime: selectRange.value?.[1] || null
+    selectEndTime: selectRange.value?.[1] || null,
+    reviewStartTime: reviewRange.value?.[0] || null,
+    reviewEndTime: reviewRange.value?.[1] || null
   }
 
   submitting.value = true
@@ -253,5 +294,13 @@ function handleDelete(row) {
 <style lang="scss" scoped>
 .search-bar__spacer {
   flex: 1;
+}
+
+.form-tip {
+  width: 100%;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--el-text-color-secondary);
 }
 </style>

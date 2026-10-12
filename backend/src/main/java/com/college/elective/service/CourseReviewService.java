@@ -10,6 +10,7 @@ import com.college.elective.vo.CourseReviewSummaryVO;
 import com.college.elective.vo.CourseReviewVO;
 import com.college.elective.vo.PendingReviewVO;
 import com.college.elective.vo.ReviewStatisticsVO;
+import com.college.elective.vo.ReviewTrendVO;
 
 import java.util.List;
 
@@ -26,7 +27,7 @@ import java.util.List;
  *   <li><b>管理员操作</b>：隐藏与删除均需填写原因（≥ 2 字），随操作日志落库。</li>
  * </ul>
  *
- * <p>业务详情见 {@code docs/待实现功能.md} 第 4 节。</p>
+ * <p>业务详情见 {@code docs/功能实现说明.md} 第 4 节。</p>
  */
 public interface CourseReviewService extends IService<CourseReview> {
 
@@ -38,6 +39,26 @@ public interface CourseReviewService extends IService<CourseReview> {
      * @param semesterId 学期ID（可选，为空则查询全部学期）
      */
     List<PendingReviewVO> listPendingReviews(Long semesterId);
+
+    /**
+     * 查询当前学生的评价趋势（按学期聚合各维度均分）。
+     *
+     * <p>仅统计已审核通过的评价，用于小程序端绘制趋势图。</p>
+     *
+     * @return 按学期升序的趋势数据
+     */
+    List<ReviewTrendVO> getMyReviewTrend();
+
+    /**
+     * 推送「评价已开放」订阅消息。
+     *
+     * <p>定向推送给该学期内「已修完但尚未评价」的学生，
+     * 避免打扰已完成评价的同学。未配置模板时返回 0。</p>
+     *
+     * @param semesterId 学期ID（不传则取当前学期）
+     * @return 成功推送的人数
+     */
+    int notifyReviewOpen(Long semesterId);
 
     /**
      * 提交或修改课程评价。

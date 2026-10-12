@@ -74,6 +74,17 @@ public class SemesterServiceImpl extends ServiceImpl<SemesterMapper, Semester> i
                 && semester.getSelectStartTime().isAfter(semester.getSelectEndTime())) {
             throw new BusinessException(ResultCode.PARAM_ERROR, "选课开始时间不能晚于选课结束时间");
         }
+        // 评价开放时间：语义为「同时设置才生效，同时留空表示不限制」，
+        // 只设置其一会导致 Semester#inReviewPeriod() 静默按「不限制」处理，属教务误配，故直接拦截
+        boolean reviewStartSet = semester.getReviewStartTime() != null;
+        boolean reviewEndSet = semester.getReviewEndTime() != null;
+        if (reviewStartSet != reviewEndSet) {
+            throw new BusinessException(ResultCode.PARAM_ERROR,
+                    "评价开放开始时间与结束时间需同时设置或同时留空");
+        }
+        if (reviewStartSet && semester.getReviewStartTime().isAfter(semester.getReviewEndTime())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "评价开放开始时间不能晚于评价开放结束时间");
+        }
 
         Long count = baseMapper.selectCount(Wrappers.<Semester>lambdaQuery()
                 .eq(Semester::getSemesterCode, semester.getSemesterCode())
@@ -95,6 +106,14 @@ public class SemesterServiceImpl extends ServiceImpl<SemesterMapper, Semester> i
             save(semester);
         } else {
             updateById(semester);
+            // MyBatis-Plus 默认 NOT_NULL 更新策略不会把 null 写入数据库，
+            // 「清空评价开放时间（改回不限制）」需显式置空，否则清空后旧窗口仍然生效
+            if (!reviewStartSet) {
+                update(Wrappers.<Semester>lambdaUpdate()
+                        .set(Semester::getReviewStartTime, null)
+                        .set(Semester::getReviewEndTime, null)
+                        .eq(Semester::getId, semester.getId()));
+            }
         }
 
         if (Integer.valueOf(1).equals(semester.getIsCurrent())) {

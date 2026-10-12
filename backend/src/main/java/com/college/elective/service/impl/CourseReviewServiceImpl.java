@@ -14,17 +14,22 @@ import com.college.elective.dto.CourseReviewQueryDTO;
 import com.college.elective.entity.Course;
 import com.college.elective.entity.CourseReview;
 import com.college.elective.entity.CourseSelection;
+import com.college.elective.entity.Semester;
 import com.college.elective.mapper.CourseMapper;
 import com.college.elective.mapper.CourseReviewMapper;
 import com.college.elective.mapper.CourseSelectionMapper;
+import com.college.elective.mapper.SemesterMapper;
 import com.college.elective.security.LoginUser;
 import com.college.elective.security.SecurityUtils;
 import com.college.elective.service.CourseReviewService;
+import com.college.elective.service.MessageSubscribeService;
+import com.college.elective.service.SemesterService;
 import com.college.elective.vo.CourseReviewDetailVO;
 import com.college.elective.vo.CourseReviewSummaryVO;
 import com.college.elective.vo.CourseReviewVO;
 import com.college.elective.vo.PendingReviewVO;
 import com.college.elective.vo.ReviewStatisticsVO;
+import com.college.elective.vo.ReviewTrendVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,6 +39,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -61,6 +67,15 @@ public class CourseReviewServiceImpl extends ServiceImpl<CourseReviewMapper, Cou
     /** 选课 Mapper：校验参评资格、取选课记录 */
     private final CourseSelectionMapper selectionMapper;
 
+    /** 学期 Mapper：校验评价开放窗口 */
+    private final SemesterMapper semesterMapper;
+
+    /** 学期服务：取当前学期（用于评价开放提醒） */
+    private final SemesterService semesterService;
+
+    /** 订阅消息服务：评价开放时定向提醒未评价的学生（未配置模板时自动跳过） */
+    private final MessageSubscribeService subscribeService;
+
     /** 匿名评价的展示名称 */
     private static final String ANONYMOUS_NAME = "匿名同学";
 
@@ -73,11 +88,68 @@ public class CourseReviewServiceImpl extends ServiceImpl<CourseReviewMapper, Cou
     }
 
     @Override
+    public List<ReviewTrendVO> getMyReviewTrend() {
+        Long studentId = SecurityUtils.requireStudentId();
+        return baseMapper.selectStudentReviewTrend(studentId);
+    }
+
+    @Override
+    public int notifyReviewOpen(Long semesterId) {
+        // 学期ID 为空则取当前学期，避免调用方必须显式传参
+        Long targetSemester = semesterId;
+        if (targetSemester == null) {
+            Semester current = semesterService.getCurrentSemester();
+            if (current == null) {
+                log.warn("[评价提醒] 未设置当前学期，跳过推送");
+                return 0;
+            }
+            targetSemester = current.getId();
+        }
+
+        // 定向推送：仅「已修完但尚未评价」的学生，避免打扰已完成评价的同学
+        List<Long> studentIds = baseMapper.selectStudentsWithPendingReviews(targetSemester);
+        if (studentIds.isEmpty()) {
+            log.info("[评价提醒] 无待评价学生 semesterId={}", targetSemester);
+            return 0;
+        }
+
+        Semester semester = semesterMapper.selectById(targetSemester);
+        String semesterName = semester == null ? "本学期" : semester.getSemesterName();
+
+        int success = 0;
+        for (Long studentId : studentIds) {
+            try {
+                boolean sent = subscribeService.pushToUser(studentId,
+                        MessageSubscribeService.SCENE_REVIEW_OPEN,
+                        Map.of("thing1", Map.of("value", semesterName),
+                                "thing2", Map.of("value", "评价通道已开放，请及时完成评教")));
+                if (sent) {
+                    success++;
+                }
+            } catch (Exception e) {
+                // 单个学生失败不影响其余学生
+                log.warn("[评价提醒] 推送失败 studentId={}", studentId, e);
+            }
+        }
+
+        log.info("[评价提醒] 推送完成 semesterId={}, 目标={}, 成功={}",
+                targetSemester, studentIds.size(), success);
+        return success;
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public Long submitReview(CourseReviewDTO dto) {
         Long studentId = SecurityUtils.requireStudentId();
         Course course = courseMapper.selectCourseDetail(dto.getCourseId());
         BusinessException.throwIf(course == null, ResultCode.COURSE_NOT_FOUND);
+
+        // 评价窗口校验：与「已修完」校验并列，同属提交前置条件。
+        // 时间未配置时 Semester#inReviewPeriod 返回 true，保持与改造前一致的行为
+        Semester semester = semesterMapper.selectById(course.getSemesterId());
+        if (semester != null && !semester.inReviewPeriod()) {
+            throw new BusinessException(ResultCode.REVIEW_WINDOW_CLOSED);
+        }
 
         // 参评资格：必须存在已修完的选课记录
         CourseSelection selection = findFinishedSelection(studentId, dto.getCourseId());

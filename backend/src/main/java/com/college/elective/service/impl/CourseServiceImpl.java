@@ -22,6 +22,7 @@ import com.college.elective.entity.Student;
 import com.college.elective.entity.SysUser;
 import com.college.elective.entity.Teacher;
 import com.college.elective.mapper.ClassroomMapper;
+import com.college.elective.mapper.CourseGradeMapper;
 import com.college.elective.mapper.CourseMapper;
 import com.college.elective.mapper.CourseScheduleMapper;
 import com.college.elective.mapper.CourseSelectionMapper;
@@ -70,6 +71,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     private final ClassroomMapper classroomMapper;
     private final DepartmentMapper departmentMapper;
     private final StringRedisTemplate stringRedisTemplate;
+
+    /** 成绩 Mapper：统计成绩分布（首页看板用，全校已录入成绩的分段人数） */
+    private final CourseGradeMapper gradeMapper;
 
     private static final Map<Integer, String> DAY_TEXTS = Map.of(
         1, "周一", 2, "周二", 3, "周三", 4, "周四",
@@ -746,10 +750,12 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         vo.setHotCourses(baseMapper.selectHotCourses(effectiveSemester, 10));
         vo.setDeptDistribution(baseMapper.selectDeptDistribution(effectiveSemester));
 
-        // 成绩分布依赖 CourseGradeMapper.selectScoreDistribution，待成绩服务实现后
-        // 取消注释并注入 CourseGradeMapper 即可启用。
-        // vo.setScoreDistribution(gradeMapper.selectScoreDistribution(null, effectiveSemester));
-        vo.setScoreDistribution(Collections.emptyList());
-        return vo;
+        // ---------- 成绩分布 ----------
+                // courseId 传 null：首页统计的是全校范围，而非单门课程。
+                // SQL 内部用 LEFT JOIN 分数段常量表（90-100 / 80-89 / 70-79 / 60-69 / 60以下），
+                // 因此没有数据的区间也会以 value = 0 返回，前端图表无需额外补零。
+                // 仅统计 total_score 非空的记录，未录入总评的草稿不计入。
+                vo.setScoreDistribution(gradeMapper.selectScoreDistribution(null, effectiveSemester));
+                return vo;
     }
 }

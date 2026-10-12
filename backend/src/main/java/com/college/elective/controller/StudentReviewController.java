@@ -8,6 +8,7 @@ import com.college.elective.service.CourseReviewService;
 import com.college.elective.vo.CourseReviewSummaryVO;
 import com.college.elective.vo.CourseReviewVO;
 import com.college.elective.vo.PendingReviewVO;
+import com.college.elective.vo.ReviewTrendVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -78,5 +79,11 @@ public class StudentReviewController {
             @RequestParam(defaultValue = "1") Long pageNum,
             @RequestParam(defaultValue = "10") Long pageSize) {
         return Result.success(reviewService.listCourseReviews(courseId, pageNum, pageSize));
+    }
+
+    @Operation(summary = "我的评价趋势", description = "按学期聚合各维度均分，用于绘制雷达图与趋势图")
+    @GetMapping("/reviews/trend")
+    public Result<List<ReviewTrendVO>> myReviewTrend() {
+        return Result.success(reviewService.getMyReviewTrend());
     }
 }

@@ -11,9 +11,7 @@ import java.util.List;
 /**
  * 成绩服务。
  *
- * <p>本接口定义成绩管理的能力契约，实现类尚未实现，需由开发者补充编码。
- * 请参考项目文档 {@code docs/待实现功能.md} 中的「成绩模块」章节，
- * 关键业务规则如下：</p>
+ * <p>本接口定义成绩管理的能力契约，关键业务规则如下：</p>
  *
  * <ul>
  *   <li><b>成绩构成</b>：总评成绩 = 平时成绩 × 30% + 期末成绩 × 70%；
@@ -23,9 +21,13 @@ import java.util.List;
  *       需先撤回发布。</li>
  *   <li><b>发布约束</b>：存在未录入总评成绩的学生时禁止发布。</li>
  *   <li><b>数据联动</b>：发布后将 {@code course_selection.status} 置为 2（已修完），
- *       并回写成绩到 {@code course_selection.score} 便于学生端快速展示。</li>
+ *       并回写成绩到 {@code course_selection.score} 便于学生端快速展示；
+ *       撤回时联动还原为 1（已选课）。</li>
  *   <li><b>权限校验</b>：教师仅能操作自己授课课程的成绩（管理员除外）。</li>
  * </ul>
+ *
+ * <p><b>注意</b>：发布联动 {@code course_selection.status = 2} 会同时影响
+ * 教学评价的「参评资格」判定，修改联动逻辑时需一并考虑评价模块。</p>
  */
 public interface CourseGradeService extends IService<CourseGrade> {
 

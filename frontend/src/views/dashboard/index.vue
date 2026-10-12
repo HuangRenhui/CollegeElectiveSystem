@@ -419,7 +419,7 @@ async function doPreload() {
     ElMessage.success('缓存预热完成')
     await loadData()
   } catch {
-    // 未实现或执行失败已由拦截器提示，保留弹窗便于调整后重试
+    // 执行失败已由拦截器提示，保留弹窗便于调整后重试
   } finally {
     preloading.value = false
   }
@@ -437,7 +437,7 @@ async function doSync() {
     ElMessage.success('选课人数同步完成')
     await loadData()
   } catch {
-    // 未实现或执行失败已由拦截器提示
+    // 执行失败已由拦截器提示
   } finally {
     syncing.value = false
   }

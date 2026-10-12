@@ -2,7 +2,6 @@ package com.college.elective.controller;
 
 import com.college.elective.aspect.OperationLog;
 import com.college.elective.common.PageResult;
-import com.college.elective.common.PendingFeature;
 import com.college.elective.common.Result;
 import com.college.elective.dto.CourseQueryDTO;
 import com.college.elective.dto.GradeInputDTO;
@@ -18,7 +17,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,14 +24,8 @@ import java.util.List;
 /**
  * 教师课程与成绩管理接口。
  *
- * <p>学生名单（{@link CourseSelectionService}）与成绩录入单查询已接入真实实现；
- * 成绩录入、发布、撤回（{@link CourseGradeService}）尚未实现，
- * 由服务层抛出统一业务异常（业务码 5006）。</p>
- *
- * <p>我的授课课程与教学课表可直接使用。</p>
- *
- * @see com.college.elective.service.CourseGradeService
- * @see com.college.elective.service.CourseSelectionService
+ * <p>覆盖教师侧的全部课程与成绩操作：我的授课课程、教学课表、学生名单，
+ * 以及成绩录入单的查询、成绩录入、发布与撤回。</p>
  */
 @Tag(name = "04-教师工作台", description = "我的授课、学生名单、成绩录入与发布、教师课表")
 @RestController
@@ -42,8 +34,8 @@ import java.util.List;
 public class TeacherCourseController {
 
     private final CourseService courseService;
-    private final ObjectProvider<CourseGradeService> gradeServiceProvider;
-    private final ObjectProvider<CourseSelectionService> selectionServiceProvider;
+    private final CourseGradeService gradeService;
+    private final CourseSelectionService selectionService;
 
     @Operation(summary = "我的授课课程")
     @GetMapping("/courses")
@@ -67,10 +59,6 @@ public class TeacherCourseController {
             @RequestParam(defaultValue = "1") Long pageNum,
             @RequestParam(defaultValue = "50") Long pageSize,
             @RequestParam(required = false) String keyword) {
-        CourseSelectionService selectionService = PendingFeature.readyOrNull(selectionServiceProvider);
-        if (selectionService == null) {
-            return PendingFeature.result("课程学生名单");
-        }
         return Result.success(selectionService.pageCourseStudents(courseId, pageNum, pageSize, keyword));
     }
 
@@ -83,10 +71,6 @@ public class TeacherCourseController {
     @Operation(summary = "成绩录入单", description = "返回该课程全部学生的当前成绩状态")
     @GetMapping("/courses/{courseId}/grade-sheet")
     public Result<List<CourseGrade>> gradeSheet(@PathVariable Long courseId) {
-        CourseGradeService gradeService = PendingFeature.readyOrNull(gradeServiceProvider);
-        if (gradeService == null) {
-            return PendingFeature.result("成绩录入单");
-        }
         return Result.success(gradeService.listCourseGradeSheet(courseId));
     }
 
@@ -94,10 +78,6 @@ public class TeacherCourseController {
     @OperationLog(module = "成绩管理", operation = "录入成绩")
     @PostMapping("/grades/input")
     public Result<Void> inputGrades(@Valid @RequestBody GradeInputDTO dto) {
-        CourseGradeService gradeService = PendingFeature.readyOrNull(gradeServiceProvider);
-        if (gradeService == null) {
-            return PendingFeature.result("批量录入成绩");
-        }
         gradeService.inputGrades(dto);
         return Result.success("成绩已保存为草稿", null);
     }
@@ -106,10 +86,6 @@ public class TeacherCourseController {
     @OperationLog(module = "成绩管理", operation = "发布成绩")
     @PostMapping("/courses/{courseId}/grades/publish")
     public Result<Void> publishGrades(@PathVariable Long courseId) {
-        CourseGradeService gradeService = PendingFeature.readyOrNull(gradeServiceProvider);
-        if (gradeService == null) {
-            return PendingFeature.result("发布课程成绩");
-        }
         gradeService.publishGrades(courseId);
         return Result.success("成绩发布成功", null);
     }
@@ -118,10 +94,6 @@ public class TeacherCourseController {
     @OperationLog(module = "成绩管理", operation = "撤回成绩")
     @PostMapping("/courses/{courseId}/grades/revoke")
     public Result<Void> revokeGrades(@PathVariable Long courseId) {
-        CourseGradeService gradeService = PendingFeature.readyOrNull(gradeServiceProvider);
-        if (gradeService == null) {
-            return PendingFeature.result("撤回成绩发布");
-        }
         gradeService.revokeGrades(courseId);
         return Result.success("成绩发布已撤回", null);
     }

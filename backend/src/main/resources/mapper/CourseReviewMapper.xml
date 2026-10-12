@@ -222,4 +222,46 @@
         WHERE selection_id = #{selectionId}
     </select>
 
+    <!--
+      按学期聚合某学生「作为评价人」给出的各维度均分。
+
+      口径说明：
+        1. student_id 是评价人，统计的是该生给出的评分随学期的变化；
+        2. status <> 3 排除管理员隐藏的违规评价，保留已提交(1)与已公开(2)；
+        3. course_review 无 deleted 列（评价采用物理删除，否则唯一键会阻挡重新提交）。
+    -->
+    <select id="selectStudentReviewTrend"
+            resultType="com.college.elective.vo.ReviewTrendVO">
+        SELECT s.id                        AS semesterId,
+               s.semester_name             AS semesterName,
+               COUNT(*)                    AS courseCount,
+               ROUND(AVG(r.average_score), 1)  AS averageScore,
+               ROUND(AVG(r.score_content), 1)  AS scoreContent,
+               ROUND(AVG(r.score_teaching), 1) AS scoreTeaching,
+               ROUND(AVG(r.score_attitude), 1) AS scoreAttitude,
+               ROUND(AVG(r.score_gain), 1)     AS scoreGain
+        FROM course_review r
+                 JOIN semester s ON r.semester_id = s.id
+        WHERE r.status &lt;&gt; 3
+          AND r.student_id = #{studentId}
+        GROUP BY s.id, s.semester_name
+        ORDER BY s.start_date ASC
+    </select>
+
+    <!--
+      查询「已修完但仍未评价」的学生ID，用于评价开放提醒的定向推送。
+      用 NOT EXISTS 而非 LEFT JOIN，避免重复行。
+    -->
+    <select id="selectStudentsWithPendingReviews" resultType="java.lang.Long">
+        SELECT DISTINCT cs.student_id
+        FROM course_selection cs
+        WHERE cs.semester_id = #{semesterId}
+          AND cs.status = 2
+          AND NOT EXISTS (
+            SELECT 1
+            FROM course_review r
+            WHERE r.selection_id = cs.id
+          )
+    </select>
+
 </mapper>
