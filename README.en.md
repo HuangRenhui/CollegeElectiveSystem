@@ -19,6 +19,7 @@
 ## Table of Contents
 
 - [Introduction](#introduction)
+- [Screenshots](#screenshots)
 - [Current Status](#current-status)
 - [Core Features](#core-features)
 - [Tech Stack](#tech-stack)
@@ -47,6 +48,81 @@ scheduling, grading, course evaluation, notices and academic statistics. It focu
 | **STUDENT** | Browse courses, enroll / withdraw, view personal timetable, view grades & GPA, submit course evaluations, read notices |
 | **TEACHER** | View teaching courses, view student rosters, input / publish / revoke grades, view teaching timetable, view evaluations of own courses, read notices |
 | **ADMIN** | Course & schedule management, student/teacher management, departments/majors/classrooms, semesters & selection windows, notices, operation logs, selection switch & cache preloading, evaluation moderation & statistics |
+
+---
+
+## Screenshots
+
+> All images below are **actual runtime screenshots** (connected to a real database and Redis), not mockups.
+
+### Demos
+
+**Enrollment Center** — course list, remaining quota and selection-window validation:
+
+![Enrollment Center](./docs/images/00-selection-flow.gif)
+
+**Timetable** — weekly schedule rendering; click a course card to view details:
+
+![Timetable](./docs/images/00-timetable-detail.gif)
+
+**Admin Dashboard** — charts and live statistics:
+
+![Admin Dashboard](./docs/images/00-admin-dashboard.gif)
+
+### Pages
+
+**Login**
+
+![Login](./docs/images/01-login.png)
+
+**Admin · Dashboard**
+
+![Admin Dashboard](./docs/images/02-admin-dashboard.png)
+
+**Admin · Semester & Enrollment Settings**
+
+![Semester Management](./docs/images/03-admin-semesters.png)
+
+**Admin · Course Management**
+
+![Course Management](./docs/images/04-admin-courses.png)
+
+**Admin · Evaluation Management**
+
+![Evaluation Management](./docs/images/05-admin-reviews.png)
+
+**Admin · Operation Logs**
+
+![Operation Logs](./docs/images/06-admin-logs.png)
+
+**Student · Enrollment Center**
+
+![Enrollment Center](./docs/images/07-student-courses.png)
+
+**Student · Timetable**
+
+![Timetable](./docs/images/08-student-timetable.png)
+
+**Student · Grades**
+
+![Grades](./docs/images/09-student-grades.png)
+
+**Teacher · My Courses**
+
+![Teacher Courses](./docs/images/11-teacher-workbench.png)
+
+<details>
+<summary>More screenshots (course evaluation)</summary>
+
+**Student · Evaluations**
+
+![Student Evaluations](./docs/images/10-student-reviews.png)
+
+**Teacher · Evaluation Analysis**
+
+![Teacher Evaluation Analysis](./docs/images/12-teacher-reviews.png)
+
+</details>
 
 ---
 

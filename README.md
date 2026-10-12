@@ -16,6 +16,7 @@
 ## 目录
 
 - [项目简介](#项目简介)
+- [系统展示](#系统展示)
 - [当前完成度说明](#当前完成度说明)
 - [核心特性](#核心特性)
 - [技术栈](#技术栈)
@@ -30,6 +31,81 @@
 - [常见问题](#常见问题)
 - [开发规范](#开发规范)
 - [参与贡献](#参与贡献)
+
+---
+
+## 系统展示
+
+> 以下均为系统**实际运行截图**（连接真实数据库与 Redis），非设计稿。
+
+### 交互动画
+
+**选课中心** —— 课程列表、余量与选课窗口实时校验：
+
+![选课中心](./docs/images/00-selection-flow.gif)
+
+**课表查看** —— 周课表渲染，点击课程卡片查看上课详情：
+
+![课表](./docs/images/00-timetable-detail.gif)
+
+**管理员数据概览** —— 统计图表与实时数据：
+
+![数据概览](./docs/images/00-admin-dashboard.gif)
+
+### 页面截图
+
+**登录页**
+
+![登录页](./docs/images/01-login.png)
+
+**管理员 · 数据概览**
+
+![管理员数据概览](./docs/images/02-admin-dashboard.png)
+
+**管理员 · 学期与选课设置**
+
+![学期管理](./docs/images/03-admin-semesters.png)
+
+**管理员 · 课程管理**
+
+![课程管理](./docs/images/04-admin-courses.png)
+
+**管理员 · 评价管理**
+
+![评价管理](./docs/images/05-admin-reviews.png)
+
+**管理员 · 操作日志**
+
+![操作日志](./docs/images/06-admin-logs.png)
+
+**学生 · 选课中心**
+
+![学生选课中心](./docs/images/07-student-courses.png)
+
+**学生 · 课表**
+
+![学生课表](./docs/images/08-student-timetable.png)
+
+**学生 · 成绩**
+
+![学生成绩](./docs/images/09-student-grades.png)
+
+**教师 · 我的授课**
+
+![教师授课](./docs/images/11-teacher-workbench.png)
+
+<details>
+<summary>更多截图（教学评价）</summary>
+
+**学生 · 教学评价**
+
+![学生评价](./docs/images/10-student-reviews.png)
+
+**教师 · 评价分析**
+
+![教师评价分析](./docs/images/12-teacher-reviews.png)
+
+</details>
 
 ---
 
