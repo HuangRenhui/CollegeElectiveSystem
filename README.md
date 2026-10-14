@@ -453,7 +453,7 @@ AppID 选「测试号」，并在本地设置中勾选「不校验合法域名�
 
 ## 数据库设计
 
-共 **14 张表**，完整 DDL 见 `backend/src/main/resources/db/schema.sql`。
+共 **17 张表**，完整 DDL 见 `backend/src/main/resources/db/schema.sql`。
 
 | 表名 | 说明 | 关键约束 |
 | --- | --- | --- |
@@ -471,6 +471,9 @@ AppID 选「测试号」，并在本地设置中勾选「不校验合法域名�
 | `notice` | 系统公告 | `(status, publish_time)` 索引 |
 | `sys_log` | 操作日志 | 无逻辑删除，按时间归档 |
 | `course_review` | 课程评价（教学评价模块） | `selection_id` 唯一（一选课一评价）；**全库唯一不含 `deleted` 字段的业务表** |
+| `user_wx_bind` | 微信身份绑定（小程序） | `(wx_appid, open_id)` 唯一；`user_id` 唯一 |
+| `message_subscribe` | 订阅消息剩余次数（小程序） | `(user_id, scene)` 唯一 |
+| `message_notice` | 站内信（点对点通知） | 索引 `(receiver_id, read_flag)` 支撑未读数统计 |
 
 ### 关键字段说明
 

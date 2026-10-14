@@ -416,7 +416,7 @@ and enable *"Skip domain validation"* under local settings. The API base URL is 
 
 ## Database Design
 
-**14 tables** in total. See `backend/src/main/resources/db/schema.sql` for full DDL.
+**17 tables** in total. See `backend/src/main/resources/db/schema.sql` for full DDL.
 
 | Table | Description | Key Constraints |
 | --- | --- | --- |
@@ -434,6 +434,9 @@ and enable *"Skip domain validation"* under local settings. The API base URL is 
 | `notice` | Notices | index `(status, publish_time)` |
 | `sys_log` | Operation logs | time-based archiving |
 | `course_review` | Course evaluations | `selection_id` unique (one review per enrollment) |
+| `user_wx_bind` | WeChat identity binding (mini program) | `(wx_appid, open_id)` unique; `user_id` unique |
+| `message_subscribe` | Remaining subscribe-message quota (mini program) | `(user_id, scene)` unique |
+| `message_notice` | In-app messages (point-to-point) | Index `(receiver_id, read_flag)` for unread counts |
 
 ### Notes
 
