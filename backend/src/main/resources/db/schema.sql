@@ -451,4 +451,28 @@ CREATE TABLE `message_subscribe`
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='消息订阅关系表';
 
+-- ---------------------------------------------------------------------
+-- 站内信表
+-- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS `message_notice`;
+CREATE TABLE `message_notice`
+(
+    `id`           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `receiver_id`  BIGINT       NOT NULL COMMENT '接收人用户ID',
+    `msg_type`     VARCHAR(30)  NOT NULL DEFAULT 'SYSTEM' COMMENT '消息类型：SYSTEM-系统 SELECTION-选课 GRADE-成绩 REVIEW-评价',
+    `title`        VARCHAR(150) NOT NULL COMMENT '标题',
+    `content`      VARCHAR(1000) NOT NULL COMMENT '内容',
+    `biz_id`       BIGINT                DEFAULT NULL COMMENT '关联业务ID（如课程ID、学期ID），便于前端跳转',
+    `biz_type`     VARCHAR(30)           DEFAULT NULL COMMENT '业务类型：COURSE/SEMESTER/GRADE',
+    `read_flag`    TINYINT      NOT NULL DEFAULT 0 COMMENT '是否已读：0-未读 1-已读',
+    `read_time`    DATETIME              DEFAULT NULL COMMENT '阅读时间',
+    `create_time`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`      TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (`id`),
+    KEY `idx_receiver_read` (`receiver_id`, `read_flag`),
+    KEY `idx_receiver_create` (`receiver_id`, `create_time`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='站内信表';
+
 SET FOREIGN_KEY_CHECKS = 1;

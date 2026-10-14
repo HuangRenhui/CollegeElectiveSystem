@@ -194,6 +194,7 @@ export const constantRoutes = [
   // ---------------------------- 公共信息（学生 / 教师） ----------------------------
   // 放在路由表末尾：侧边栏按路由顺序平铺渲染，因此它固定出现在菜单最下方。
   // 仅学生与教师可见：管理员是公告的发布方，使用「公告管理」，无需再查看此页。
+  // 站内信与公告并列放在「公共信息」下：一个是群发广播，一个是个人点对点通知。
   {
     path: '/info',
     component: Layout,
@@ -205,6 +206,12 @@ export const constantRoutes = [
         name: 'PublicNotices',
         component: () => import('@/views/common/notices.vue'),
         meta: { title: '公共信息', icon: 'Bell', roles: ['STUDENT', 'TEACHER'] }
+      },
+      {
+        path: 'messages',
+        name: 'MyMessages',
+        component: () => import('@/views/common/messages.vue'),
+        meta: { title: '消息中心', icon: 'Message', roles: ['STUDENT', 'TEACHER'] }
       }
     ]
   },
