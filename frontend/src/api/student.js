@@ -60,6 +60,26 @@ export function listMyGrades(params) {
   return request({ url: '/student/grades', method: 'get', params })
 }
 
+/** 我的 GPA 趋势（按学期聚合，时间升序，用于折线图） */
+export function getMyGpaTrend() {
+  return request({ url: '/student/grades/gpa-trend', method: 'get' })
+}
+
+/**
+ * 导出我的成绩单（Excel）。
+ *
+ * <p>必须指定 responseType: 'blob'：后端返回的是二进制表格流，
+ * 用默认的 json 解析会把文件内容破坏掉。</p>
+ */
+export function exportMyGrades(semesterId) {
+  return request({
+    url: '/student/grades/export',
+    method: 'get',
+    params: { semesterId },
+    responseType: 'blob'
+  })
+}
+
 // ============================ 课程 / 教师评价 ============================
 
 /** 我的待评价课程（已修完且本学期未评价） */

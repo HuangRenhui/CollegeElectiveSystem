@@ -82,4 +82,59 @@
         ORDER BY t.min_score DESC
     </select>
 
+    <!--
+      GPA 趋势：按学期聚合，升序返回（时间顺序，供前端画折线图）。
+
+      计算口径与 getStudentGradeReport 保持一致（学分加权）：
+        gradePoint  = SUM(grade_point * credit) / SUM(credit)
+        averageScore = SUM(total_score * credit) / SUM(credit)
+
+      注意：
+        1) 只统计已发布成绩（status = 1）且 total_score / grade_point 非空的记录，
+           否则草稿或未录入记录会把趋势拉低；
+        2) credit = 0 的课程排除，否则除零；
+        3) NULLIF(SUM(credit), 0) 兜底，防止极端数据导致整个查询失败。
+    -->
+    <select id="selectGpaTrend" resultType="com.college.elective.vo.GpaTrendVO$TrendPoint">
+        SELECT g.semester_id AS semesterId,
+               se.semester_name AS semesterName,
+               ROUND(SUM(g.grade_point * c.credit) / NULLIF(SUM(c.credit), 0), 2) AS gradePoint,
+               ROUND(SUM(g.total_score * c.credit) / NULLIF(SUM(c.credit), 0), 2) AS averageScore,
+               COUNT(g.id) AS courseCount,
+               SUM(c.credit) AS earnedCredit
+        FROM course_grade g
+        INNER JOIN course c ON c.id = g.course_id AND c.deleted = 0 AND c.credit > 0
+        LEFT JOIN semester se ON se.id = g.semester_id AND se.deleted = 0
+        WHERE g.deleted = 0
+          AND g.student_id = #{studentId}
+          AND g.status = 1
+          AND g.total_score IS NOT NULL
+          AND g.grade_point IS NOT NULL
+        GROUP BY g.semester_id, se.semester_name
+        ORDER BY se.start_date ASC, g.semester_id ASC
+    </select>
+
+    <!--
+      批量查询多门课程的历史平均成绩（一次 SQL 聚合，避免逐门查询）。
+
+      口径：仅统计已发布成绩（status = 1）且有 total_score 的记录；
+      无已发布成绩的课程不会出现在结果中，由调用方补 null
+      （前端据此隐藏标签，而不是显示 0 分）。
+
+      foreach 的 open 带左括号、close 带右括号，拼出 IN (?, ?, ...)。
+    -->
+    <select id="selectCourseAvgScores" resultType="com.college.elective.entity.Course">
+        SELECT g.course_id AS id,
+               ROUND(AVG(g.total_score), 1) AS avgScore
+        FROM course_grade g
+        WHERE g.deleted = 0
+          AND g.status = 1
+          AND g.total_score IS NOT NULL
+          AND g.course_id IN
+          <foreach collection="courseIds" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+        GROUP BY g.course_id
+    </select>
+
 </mapper>

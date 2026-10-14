@@ -9,13 +9,17 @@ import com.college.elective.dto.GradeInputDTO;
 import com.college.elective.entity.Course;
 import com.college.elective.entity.CourseGrade;
 import com.college.elective.entity.CourseSelection;
+import com.college.elective.entity.Student;
 import com.college.elective.mapper.CourseGradeMapper;
 import com.college.elective.mapper.CourseMapper;
 import com.college.elective.mapper.CourseSelectionMapper;
+import com.college.elective.mapper.StudentMapper;
 import com.college.elective.security.LoginUser;
 import com.college.elective.security.SecurityUtils;
 import com.college.elective.service.CourseGradeService;
+import com.college.elective.service.MessageNoticeService;
 import com.college.elective.service.MessageSubscribeService;
+import com.college.elective.vo.GpaTrendVO;
 import com.college.elective.vo.GradeReportVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +34,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 成绩服务实现。
@@ -90,6 +96,16 @@ public class CourseGradeServiceImpl extends ServiceImpl<CourseGradeMapper, Cours
      * 订阅消息服务：成绩发布后向学生推送提醒（未配置模板时自动跳过）
      */
     private final MessageSubscribeService subscribeService;
+
+    /**
+     * 学生 Mapper：把学生表主键转换为 sys_user.id，供站内信定位接收人
+     */
+    private final StudentMapper studentMapper;
+
+    /**
+     * 站内信服务：成绩发布后批量通知学生（站内可见，不依赖微信配置）
+     */
+    private final MessageNoticeService messageNoticeService;
     /**
      * 及格分数线
      */
@@ -219,10 +235,31 @@ public class CourseGradeServiceImpl extends ServiceImpl<CourseGradeMapper, Cours
         BusinessException.throwIf(drafts.isEmpty(), ResultCode.DATA_NOT_FOUND,
             "暂无可发布的成绩记录");
 
-        // 2. 完整性校验：仍有总评为 null 的，禁止发布
+        // 2. 完整性校验（两重，缺一不可）
+        // 2.1 草稿记录中仍有总评为 null 的，禁止发布
         long missing = drafts.stream().filter(g -> g.getTotalScore() == null).count();
         BusinessException.throwIf(missing > 0, ResultCode.PARAM_ERROR,
             String.format("还有 %d 名学生未录入成绩，无法发布", missing));
+
+        // 2.2 已选课学生必须都有成绩记录
+        //     只校验 2.1 是不够的：若某学生从未被录入过成绩，他根本不会出现在
+        //     drafts 中，「草稿内无空 totalScore」这条就形同虚设，发布后会出现
+        //     「已选课却查不到成绩」的情况。故需比对「已选课学生 − 已有成绩记录」差集。
+        List<Long> selectedSelectionIds = selectionMapper.selectList(
+                Wrappers.<CourseSelection>lambdaQuery()
+                    .eq(CourseSelection::getCourseId, courseId)
+                    .in(CourseSelection::getStatus,
+                        Constants.SELECTION_SELECTED, Constants.SELECTION_FINISHED))
+            .stream().map(CourseSelection::getId).toList();
+        Set<Long> gradedSelectionIds = drafts.stream()
+            .map(CourseGrade::getSelectionId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        long ungraded = selectedSelectionIds.stream()
+            .filter(id -> !gradedSelectionIds.contains(id))
+            .count();
+        BusinessException.throwIf(ungraded > 0, ResultCode.PARAM_ERROR,
+            String.format("还有 %d 名已选课学生没有成绩记录，无法发布", ungraded));
 
         LocalDateTime now = LocalDateTime.now();
 
@@ -291,6 +328,29 @@ public class CourseGradeServiceImpl extends ServiceImpl<CourseGradeMapper, Cours
      * 若模板变更需同步调整此处。</p>
      */
     private void doPushGradePublished(Course course, List<Long> studentIds) {
+        // 批量发站内信：一次事件通知全班，用 sendBatch 避免逐条插入的 N 次 SQL。
+        // receiver_id 需要 sys_user.id，而此处 studentIds 是学生表主键，
+        // 故先经 studentMapper 批量转换。
+        List<Long> userIds = studentIds.stream()
+            .map(studentMapper::selectById)
+            .filter(s -> s != null && s.getUserId() != null)
+            .map(Student::getUserId)
+            .toList();
+        if (!userIds.isEmpty()) {
+            try {
+                messageNoticeService.sendBatch(
+                    userIds,
+                    "GRADE",
+                    "成绩已发布",
+                    String.format("《%s》的成绩已发布，请前往「我的成绩」查看。", course.getCourseName()),
+                    course.getId(),
+                    "GRADE");
+            } catch (Exception e) {
+                log.warn("[成绩发布] 发送站内信失败 courseId={}", course.getId(), e);
+            }
+        }
+
+        // 微信订阅消息仍按人逐条推送（受「一次授权只能发一条」限制，无法批量）
         for (Long studentId : studentIds) {
             try {
                 subscribeService.pushToUser(studentId,
@@ -525,6 +585,42 @@ public class CourseGradeServiceImpl extends ServiceImpl<CourseGradeMapper, Cours
     }
 
     /**
+     * {@inheritDoc}
+     *
+     * <p>实现要点：</p>
+     * <ul>
+     *   <li>复用 {@code CourseGradeMapper#selectGpaTrend}，SQL 层完成分组聚合，
+     *       不在内存里二次遍历（避免把全部成绩加载到 JVM）</li>
+     *   <li>「最高绩点学期」在 Java 侧计算：SQL 已按学期升序返回，
+     *       一次遍历即可，无需再排一次序</li>
+     *   <li>绩点为 null 的学期（如该学期只有 0 学分课程）在比较时跳过</li>
+     * </ul>
+     */
+    @Override
+    public GpaTrendVO getGpaTrend() {
+        Long studentId = SecurityUtils.requireStudentId();
+
+        GpaTrendVO vo = new GpaTrendVO();
+        List<GpaTrendVO.TrendPoint> points = baseMapper.selectGpaTrend(studentId);
+        vo.setPoints(points);
+        vo.setSemesterCount(points.size());
+
+        // 找最高绩点的学期（并列时取时间上较早的一个，符合「首次达到最好水平」的直觉）
+        BigDecimal best = null;
+        for (GpaTrendVO.TrendPoint p : points) {
+            if (p.getGradePoint() != null
+                    && (best == null || p.getGradePoint().compareTo(best) > 0)) {
+                best = p.getGradePoint();
+                vo.setBestSemester(p.getSemesterName());
+                vo.setBestPoint(best);
+            }
+        }
+
+        log.debug("[GPA趋势] studentId={}, 学期数={}, 最高绩点={}", studentId, points.size(), best);
+        return vo;
+    }
+
+    /**
      * 成绩录入单一次加载的最大条数
      */
     private static final long MAX_GRADE_SHEET_SIZE = 1000L;
@@ -541,9 +637,13 @@ public class CourseGradeServiceImpl extends ServiceImpl<CourseGradeMapper, Cours
         if (loginUser.isAdmin()) {
             return;
         }
+        // 用 NOT_COURSE_TEACHER(4004) 而非 ROLE_NOT_ALLOWED(2007)：
+        // 4004 的语义正是「您不是该课程的授课教师」，与前端约定一致；
+        // 2007 表示「角色本身无权做这类操作」，用于此处会让前端难以区分
+        // 「角色不对」与「不是这门课的教师」两种情况。
         BusinessException.throwIf(!loginUser.isTeacher()
                 || !Objects.equals(course.getTeacherId(), loginUser.getTeacherId()),
-            ResultCode.ROLE_NOT_ALLOWED, "无权操作该课程的成绩");
+            ResultCode.NOT_COURSE_TEACHER);
     }
 
     /**

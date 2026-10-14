@@ -5,6 +5,7 @@ import com.college.elective.common.Result;
 import com.college.elective.entity.CourseGrade;
 import com.college.elective.security.SecurityUtils;
 import com.college.elective.service.CourseGradeService;
+import com.college.elective.vo.GpaTrendVO;
 import com.college.elective.vo.GradeReportVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -42,5 +43,12 @@ public class StudentGradeController {
             @RequestParam(required = false) Long semesterId) {
         Long studentId = SecurityUtils.requireStudentId();
         return Result.success(gradeService.pageGrades(pageNum, pageSize, studentId, null, semesterId, 1));
+    }
+
+    @Operation(summary = "我的 GPA 趋势",
+        description = "按学期聚合的绩点走势，时间升序，用于折线图；无已发布成绩时返回空列表")
+    @GetMapping("/gpa-trend")
+    public Result<GpaTrendVO> myGpaTrend() {
+        return Result.success(gradeService.getGpaTrend());
     }
 }

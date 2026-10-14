@@ -751,11 +751,11 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         vo.setDeptDistribution(baseMapper.selectDeptDistribution(effectiveSemester));
 
         // ---------- 成绩分布 ----------
-                // courseId 传 null：首页统计的是全校范围，而非单门课程。
-                // SQL 内部用 LEFT JOIN 分数段常量表（90-100 / 80-89 / 70-79 / 60-69 / 60以下），
-                // 因此没有数据的区间也会以 value = 0 返回，前端图表无需额外补零。
-                // 仅统计 total_score 非空的记录，未录入总评的草稿不计入。
-                vo.setScoreDistribution(gradeMapper.selectScoreDistribution(null, effectiveSemester));
-                return vo;
+        // courseId 传 null：首页统计的是全校范围，而非单门课程。
+        // SQL 内部用 LEFT JOIN 分数段常量表（90-100 / 80-89 / 70-79 / 60-69 / 60以下），
+        // 因此没有数据的区间也会以 value = 0 返回，前端图表无需额外补零。
+        // 仅统计 total_score 非空的记录，未录入总评的草稿不计入。
+        vo.setScoreDistribution(gradeMapper.selectScoreDistribution(null, effectiveSemester));
+        return vo;
     }
 }

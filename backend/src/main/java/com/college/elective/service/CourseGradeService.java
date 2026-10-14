@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.college.elective.common.PageResult;
 import com.college.elective.dto.GradeInputDTO;
 import com.college.elective.entity.CourseGrade;
+import com.college.elective.vo.GpaTrendVO;
 import com.college.elective.vo.GradeReportVO;
 
 import java.util.List;
@@ -88,4 +89,19 @@ public interface CourseGradeService extends IService<CourseGrade> {
      * @return 成绩录入单明细
      */
     List<CourseGrade> listCourseGradeSheet(Long courseId);
+
+    /**
+     * 查询当前登录学生的 GPA 趋势（按学期聚合，时间升序）。
+     *
+     * <p>与 {@link #getStudentGradeReport(Long)} 的口径区别：</p>
+     * <ul>
+     *   <li>成绩单是<b>单学期或全部</b>的明细列表，用于展示每门课；</li>
+     *   <li>GPA 趋势是<b>逐学期</b>的聚合序列，用于折线图展示学业走势。</li>
+     * </ul>
+     *
+     * <p>二者都只统计已发布成绩（{@code status = 1}），且都按学分加权。</p>
+     *
+     * @return GPA 趋势（含各学期绩点、平均分、已得学分），无数据时 points 为空列表
+     */
+    GpaTrendVO getGpaTrend();
 }
