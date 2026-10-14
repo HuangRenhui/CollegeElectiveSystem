@@ -37,9 +37,27 @@ public class SecurityConfig {
     private final RestAccessDeniedHandler accessDeniedHandler;
     private final ElectiveProperties properties;
 
-    /** 无需认证即可访问的路径 */
+    /**
+     * 无需认证即可访问的路径。
+     *
+     * <p><b>为什么微信的三个接口必须放行</b>：它们都在「用户还没拿到系统令牌」
+     * 的阶段被调用——</p>
+     * <ul>
+     *   <li>{@code /wx/enabled}：小程序登录页探测是否展示微信入口，此时尚未登录；</li>
+     *   <li>{@code /wx/login}：用 {@code wx.login()} 的 code 换身份，本就是登录动作；</li>
+     *   <li>{@code /wx/bind}：首次绑定，此时也还没有系统令牌。</li>
+     * </ul>
+     * <p>三者若被鉴权拦截，微信一键登录链路会在第一步就 401，
+     * 功能整体不可用（且接口自身逻辑正确，问题只在白名单）。</p>
+     *
+     * <p>注意<b>不要</b>写成 {@code /wx/**}：{@code /wx/subscribe} 系列依赖
+     * {@code SecurityUtils.getUserId()} 取当前用户，必须保持鉴权。</p>
+     */
     private static final String[] WHITE_LIST = {
             "/auth/login",
+            "/wx/enabled",
+            "/wx/login",
+            "/wx/bind",
             "/doc.html",
             "/webjars/**",
             "/swagger-ui/**",
