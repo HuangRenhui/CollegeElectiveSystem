@@ -25,6 +25,10 @@
             <el-icon><Promotion /></el-icon>发布成绩
           </el-button>
           <el-button type="warning" plain :loading="revoking" @click="handleRevoke">撤回发布</el-button>
+          <!-- 导出与发布状态无关：草稿也要能导出，便于线下核对后再发布 -->
+          <el-button :loading="exporting" :disabled="!sheet.length" @click="handleExport">
+            导出成绩单
+          </el-button>
         </div>
       </div>
 
@@ -112,9 +116,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getGradeSheet, inputGrades, publishGrades, revokeGrades } from '@/api/teacher'
+import { getGradeSheet, inputGrades, publishGrades, revokeGrades, exportCourseGradeSheet } from '@/api/teacher'
 import { getCourseDetail } from '@/api/student'
 import { gradeStatusText, gradeStatusTag, scoreColor } from '@/utils/dict'
+import { downloadBlob } from '@/utils/download'
 
 defineOptions({ name: 'TeacherGrades' })
 
@@ -125,6 +130,7 @@ const loading = ref(false)
 const saving = ref(false)
 const publishing = ref(false)
 const revoking = ref(false)
+const exporting = ref(false)
 const sheet = ref([])
 const course = ref({})
 const keyword = ref('')
@@ -170,6 +176,19 @@ async function loadSheet() {
 
 function isPublished(row) {
   return row.status === 1 || row.status === 2
+}
+
+/** 导出本课程成绩单（含草稿），便于线下核对后再发布 */
+async function handleExport() {
+  exporting.value = true
+  try {
+    const response = await exportCourseGradeSheet(courseId)
+    downloadBlob(response, '课程成绩单.xlsx')
+  } catch {
+    // 错误已由请求拦截器提示
+  } finally {
+    exporting.value = false
+  }
 }
 
 function calcTotal(row) {

@@ -13,6 +13,8 @@
           <div>
             <el-input v-model="query.keyword" placeholder="搜索姓名/学号" clearable size="small" style="width: 200px" @keyup.enter="loadData" />
             <el-button type="primary" size="small" style="margin-left: 8px" @click="loadData">查询</el-button>
+            <!-- 导出的是完整名单，不受上方关键字筛选影响 -->
+            <el-button size="small" :loading="exporting" @click="handleExport">导出名单</el-button>
           </div>
         </div>
       </template>
@@ -59,8 +61,9 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { listCourseStudents } from '@/api/teacher'
+import { listCourseStudents, exportCourseSelections } from '@/api/teacher'
 import { selectionStatusText, selectionStatusTag, scoreColor } from '@/utils/dict'
+import { downloadBlob } from '@/utils/download'
 
 defineOptions({ name: 'TeacherStudents' })
 
@@ -68,6 +71,7 @@ const route = useRoute()
 const courseId = Number(route.params.courseId)
 
 const loading = ref(false)
+const exporting = ref(false)
 const list = ref([])
 const total = ref(0)
 
@@ -86,6 +90,19 @@ async function loadData() {
     total.value = 0
   } finally {
     loading.value = false
+  }
+}
+
+/** 导出本课程完整选课名单（不受页面关键字筛选影响） */
+async function handleExport() {
+  exporting.value = true
+  try {
+    const response = await exportCourseSelections(courseId)
+    downloadBlob(response, '选课名单.xlsx')
+  } catch {
+    // 错误已由请求拦截器提示
+  } finally {
+    exporting.value = false
   }
 }
 </script>

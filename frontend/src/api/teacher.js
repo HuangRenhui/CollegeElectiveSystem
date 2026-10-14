@@ -40,6 +40,26 @@ export function getMyTimetable(params) {
   return request({ url: '/teacher/timetable', method: 'get', params })
 }
 
+// ============================ Excel 导出 ============================
+
+/** 导出课程成绩单（Excel，含草稿）。responseType 必须为 blob，否则文件损坏。 */
+export function exportCourseGradeSheet(courseId) {
+  return request({
+    url: `/teacher/courses/${courseId}/grade-sheet/export`,
+    method: 'get',
+    responseType: 'blob'
+  })
+}
+
+/** 导出选课名单（Excel） */
+export function exportCourseSelections(courseId) {
+  return request({
+    url: `/teacher/courses/${courseId}/selections/export`,
+    method: 'get',
+    responseType: 'blob'
+  })
+}
+
 // ============================ 评价查看（只读） ============================
 
 /** 本人授课课程的评价汇总列表 */

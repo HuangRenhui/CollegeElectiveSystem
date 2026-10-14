@@ -25,6 +25,11 @@
         <jjwt.version>0.12.6</jjwt.version>
         <knife4j.version>4.5.0</knife4j.version>
         <hutool.version>5.8.32</hutool.version>
+        <!--
+          POI 版本需与 hutool-all 内部编译所依赖的版本一致（5.2.x），
+          否则 ExcelUtil 调用 POI 时可能 NoSuchMethodError。
+        -->
+        <poi.version>5.2.5</poi.version>
     </properties>
 
     <dependencies>
@@ -101,6 +106,24 @@
             <groupId>cn.hutool</groupId>
             <artifactId>hutool-all</artifactId>
             <version>${hutool.version}</version>
+        </dependency>
+        <!--
+          POI 必须显式声明！
+
+          hutool-all 的 pom 把 POI 声明为 <optional>true</optional>，
+          可选依赖不会传递给使用者，因此「只依赖 hutool-all」时：
+
+            编译期：正常（Hutool 自身已编译好，我们只调 Hutool API）
+            运行期：NoClassDefFoundError → Hutool 将其包装为 UtilException
+                    → Excel 导出接口一律 500
+
+          该问题在编译阶段无法发现，只能靠真实调用暴露，
+          故此处显式引入 poi-ooxml（Excel 报表导出用）。
+        -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
