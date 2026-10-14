@@ -72,6 +72,11 @@
               <span><el-icon><Medal /></el-icon>{{ course.credit }} 学分</span>
               <span><el-icon><Clock /></el-icon>{{ course.hours }} 学时</span>
               <span><el-icon><EditPen /></el-icon>{{ examTypeText(course.examType) }}</span>
+              <!-- 历史平均分：后端无已发布成绩时返回 null，此时不渲染该标签
+                   （若显示 0 会被误读为「该课平均分 0」） -->
+              <span v-if="course.avgScore != null">
+                <el-icon><TrendCharts /></el-icon>均分 {{ course.avgScore }}
+              </span>
             </div>
 
             <div class="course-card__schedule">
@@ -139,6 +144,9 @@
         <el-descriptions-item label="学分">{{ detail.credit }}</el-descriptions-item>
         <el-descriptions-item label="学时">{{ detail.hours }}</el-descriptions-item>
         <el-descriptions-item label="考核方式">{{ examTypeText(detail.examType) }}</el-descriptions-item>
+        <el-descriptions-item v-if="detail.avgScore != null" label="历史平均分">
+          {{ detail.avgScore }}
+        </el-descriptions-item>
         <el-descriptions-item label="选课情况">
           {{ detail.selectedCount || 0 }} / {{ detail.maxCapacity }}（余 {{ detail.remainingCapacity ?? '-' }}）
         </el-descriptions-item>
@@ -190,7 +198,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, TrendCharts } from '@element-plus/icons-vue'
 import {
   listCourses, getCourseDetail, selectCourse, checkConflict,
   requestQueue, queryQueue, cancelQueue
@@ -686,6 +694,11 @@ const queueProgress = computed(() => {
 
 .text-warning {
   color: #e6a23c;
+}
+
+/* 历史平均分标签：与其它信息项视觉区分，弱化为次要信息 */
+.course-card__info span:last-child {
+  color: #909399;
 }
 
 .schedule-line {

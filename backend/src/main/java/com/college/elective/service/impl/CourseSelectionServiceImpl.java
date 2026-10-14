@@ -9,6 +9,7 @@ import com.college.elective.common.*;
 import com.college.elective.config.ElectiveProperties;
 import com.college.elective.dto.CourseQueryDTO;
 import com.college.elective.entity.*;
+import com.college.elective.mapper.CourseGradeMapper;
 import com.college.elective.mapper.CourseMapper;
 import com.college.elective.mapper.CourseScheduleMapper;
 import com.college.elective.mapper.CourseSelectionMapper;
@@ -16,6 +17,7 @@ import com.college.elective.mapper.StudentMapper;
 import com.college.elective.security.LoginUser;
 import com.college.elective.security.SecurityUtils;
 import com.college.elective.service.CourseSelectionService;
+import com.college.elective.service.MessageNoticeService;
 import com.college.elective.service.SemesterService;
 import com.college.elective.vo.ConflictVO;
 import com.college.elective.vo.QueueStatusVO;
@@ -95,6 +97,16 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
      * 课程 Mapper：查询课程详情、校验选课权限、同步数据库侧的已选人数计数
      */
     private final CourseMapper courseMapper;
+
+    /**
+     * 成绩 Mapper：选课列表需要展示课程历史平均分（批量聚合，见 fillAvgScores）
+     */
+    private final CourseGradeMapper gradeMapper;
+
+    /**
+     * 站内信服务：选课成功后通知学生
+     */
+    private final MessageNoticeService messageNoticeService;
 
     /**
      * 学期服务：选课开关与时间窗口以「当前学期」为准；冲突检测的学期由调用方显式传入
@@ -297,7 +309,45 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
 
         Integer remaining = currentCapacity(courseId);
         log.info("[选课] 成功 studentId={}, courseId={}, 剩余容量={}", studentId, courseId, remaining);
+
+        // 事务提交后发送站内信。注意 studentId 是学生表主键，
+        // 而站内信的 receiver_id 指向 sys_user.id，必须经 student.userId 转换。
+        // 通知失败不影响选课结果（主流程已提交），故在此处 try-catch 兜底。
+        notifySelectionSuccess(studentId, course);
+
         return new SelectionResultVO(true, courseId, course.getCourseName(), remaining, "选课成功");
+    }
+
+    /**
+     * 选课成功后发送站内信。
+     *
+     * <p><b>为什么 studentId 要转 userId</b>：选课流程里流转的是 {@code student.id}
+     * （学生表主键），而站内信的 {@code receiver_id} 指向 {@code sys_user.id}，
+     * 二者不是同一个 ID，必须经 {@code student.user_id} 转换。</p>
+     *
+     * <p><b>为什么容错</b>：通知是附带动作，此时选课已提交成功，
+     * 若因通知失败把整体判为失败，会出现「课已选上却提示失败」的不一致。</p>
+     */
+    private void notifySelectionSuccess(Long studentId, Course course) {
+        try {
+            Student student = studentMapper.selectById(studentId);
+            if (student == null || student.getUserId() == null) {
+                log.warn("[站内信] 选课成功通知跳过：学生或关联用户不存在 studentId={}", studentId);
+                return;
+            }
+            messageNoticeService.send(
+                student.getUserId(),
+                "SELECTION",
+                "选课成功",
+                String.format("你已成功选上《%s》（%s 学分），上课时间：%s。",
+                    course.getCourseName(), course.getCredit(),
+                    course.getScheduleText() == null ? "待定" : course.getScheduleText()),
+                course.getId(),
+                "COURSE");
+        } catch (Exception e) {
+            log.warn("[站内信] 选课成功通知发送失败 studentId={}, courseId={}",
+                studentId, course.getId(), e);
+        }
     }
 
     /**
@@ -1108,7 +1158,42 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
             course.setRemainingCapacity(remainingByCourse.get(course.getId()));
             course.setSelected(selectedCourseIds.contains(course.getId()));
         }
+
+        // 5. 批量填充「历史平均分」展示字段
+        fillAvgScores(courses);
         return PageResult.of(page);
+    }
+
+    /**
+     * 批量填充课程的历史平均成绩（展示字段）。
+     *
+     * <p><b>为什么必须批量</b>：逐门查会在 N 门课程时产生 N 次查询（N+1 问题），
+     * 选课高峰会放大到数据库。这里用一次 {@code IN (...)} 聚合取回全部课程的平均分。</p>
+     *
+     * <p><b>为什么 avgScore 允许为 null</b>：新开课或尚无已发布成绩的课程没有平均分，
+     * 此时应留空由前端隐藏标签。若填 0，用户会误以为「该课平均分是 0」。</p>
+     *
+     * <p><b>空列表短路</b>：courseIds 为空时不能执行查询，
+     * 否则 MyBatis 拼出 {@code IN ()} 直接 SQL 语法错误。</p>
+     *
+     * @param courses 课程列表（非空）
+     */
+    private void fillAvgScores(List<Course> courses) {
+        if (courses.isEmpty()) {
+            return;
+        }
+        List<Long> courseIds = courses.stream().map(Course::getId).toList();
+        List<Course> avgRows = gradeMapper.selectCourseAvgScores(courseIds);
+        if (avgRows.isEmpty()) {
+            return;
+        }
+        Map<Long, BigDecimal> avgById = new HashMap<>(avgRows.size());
+        for (Course row : avgRows) {
+            avgById.put(row.getId(), row.getAvgScore());
+        }
+        for (Course course : courses) {
+            course.setAvgScore(avgById.get(course.getId()));
+        }
     }
 
     /**

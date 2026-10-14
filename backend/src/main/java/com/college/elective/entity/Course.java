@@ -104,4 +104,8 @@ public class Course extends BaseEntity {
     @Schema(description = "当前登录学生是否已选")
     @TableField(exist = false)
     private Boolean selected;
+
+    @Schema(description = "历史平均成绩（所有已发布成绩的均值，无数据时为 null）")
+    @TableField(exist = false)
+    private BigDecimal avgScore;
 }
