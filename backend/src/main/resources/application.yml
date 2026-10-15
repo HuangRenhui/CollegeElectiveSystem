@@ -47,6 +47,10 @@ mybatis-plus:
       logic-delete-field: deleted
       logic-delete-value: 1
       logic-not-delete-value: 0
+  # ---------- 邮件 SMTP ----------
+  # 注意：本项目不使用 Spring Boot 标准的 spring.mail.* 自动装配，
+  # 所有邮件参数统一收在 elective.mail.* 下，由 MailConfig 显式创建
+  # JavaMailSenderImpl。参见 elective.mail 小节的说明。
 
 # 业务自定义配置
 elective:
@@ -80,6 +84,33 @@ elective:
     queue-max-size: 5000
     # 排队令牌有效期（秒），超时未完成选课需重新取号
     queue-token-ttl-seconds: 120
+  # ---------- 邮件通知（选课成功 / 成绩发布）----------
+  # 全部参数集中于此，由 MailConfig 显式创建 JavaMailSenderImpl。
+  # 未配置 host 时不会注册 JavaMailSender，邮件通知静默降级，不影响启动与主流程。
+  mail:
+    # ⚠️ 变量前缀必须是 ELECTIVE_MAIL_*，不能写成 MAIL_*。
+    #    因为 Spring Boot 的「宽松绑定」会同时把环境变量 ELECTIVE_MAIL_HOST
+    #    直接绑定到 elective.mail.host 属性；若此处占位符再读一个不同名的
+    #    MAIL_HOST，两条路径会互相干扰：占位符取到空值走默认、
+    #    而宽松绑定又把真实值写回属性，表现为「部分字段生效、部分不生效」，
+    #    极难排查。统一用同一套变量名可彻底避免。
+    enabled: ${ELECTIVE_MAIL_ENABLED:false}
+    host: ${ELECTIVE_MAIL_HOST:}
+    # 465→SMTPS(隐式 SSL，保持 ssl-enable=true)
+    # 587→STARTTLS(改 ssl-enable=false + starttls-enable=true)
+    port: ${ELECTIVE_MAIL_PORT:465}
+    username: ${ELECTIVE_MAIL_USERNAME:}
+    password: ${ELECTIVE_MAIL_PASSWORD:}
+    ssl-enable: ${ELECTIVE_MAIL_SSL:true}
+    starttls-enable: ${ELECTIVE_MAIL_STARTTLS:false}
+    # 发件人。建议写成 "选修课系统 <noreply@xx.edu.cn>"，
+    # 部分 SMTP 服务要求发件人与认证账号一致，否则会被拒
+    from: ${ELECTIVE_MAIL_FROM:}
+    subject-prefix: 【选修课系统】
+    # 三个超时都必须设置，否则 SMTP 无响应时发送线程会被长期占用
+    connection-timeout: 5000
+    timeout: 5000
+    write-timeout: 5000
   cors:
     allowed-origins:
       - http://localhost:5174
@@ -87,14 +118,22 @@ elective:
       - http://localhost
 
 # 微信小程序配置
-# ⚠️ app-secret 必须通过环境变量 WX_APP_SECRET 注入，切勿提交到仓库
+# ⚠️ 凭证一律通过环境变量注入，切勿硬编码到本文件！
+#    app-secret 等同于小程序钥匙，泄露后他人可伪造用户身份调用微信接口。
 #    未配置 app-id / app-secret 时，微信登录与订阅消息功能自动禁用，
-#    小程序端会隐藏对应入口，不影响其余功能
+#    小程序端会隐藏对应入口，不影响其余功能。
+#
+#    本地调试请在 IDEA 的 Run Configuration → Environment variables 中填写：
+#      WX_APP_ID=wx...
+#      WX_APP_SECRET=...
+#      WX_TPL_REVIEW_OPEN=...
+#      WX_TPL_GRADE_PUBLISH=...
+#    或在命令行启动时前置设置这些环境变量。
 wx:
   miniapp:
     app-id: ${WX_APP_ID:}
     app-secret: ${WX_APP_SECRET:}
-    # 订阅消息模板ID，在微信公众平台申请后填入（需经环境变量或配置中心下发）
+    # 订阅消息模板ID，在微信公众平台 · 小程序后台「功能 → 订阅消息」申请后填入
     review-open-template-id: ${WX_TPL_REVIEW_OPEN:}
     grade-publish-template-id: ${WX_TPL_GRADE_PUBLISH:}
 

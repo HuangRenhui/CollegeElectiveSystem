@@ -17,6 +17,7 @@ import com.college.elective.mapper.StudentMapper;
 import com.college.elective.security.LoginUser;
 import com.college.elective.security.SecurityUtils;
 import com.college.elective.service.CourseGradeService;
+import com.college.elective.service.MailNoticeService;
 import com.college.elective.service.MessageNoticeService;
 import com.college.elective.service.MessageSubscribeService;
 import com.college.elective.vo.GpaTrendVO;
@@ -106,6 +107,11 @@ public class CourseGradeServiceImpl extends ServiceImpl<CourseGradeMapper, Cours
      * 站内信服务：成绩发布后批量通知学生（站内可见，不依赖微信配置）
      */
     private final MessageNoticeService messageNoticeService;
+
+    /**
+     * 邮件通知服务：成绩发布后异步发提醒邮件（未配置 SMTP 时自动跳过）
+     */
+    private final MailNoticeService mailNoticeService;
     /**
      * 及格分数线
      */
@@ -347,6 +353,20 @@ public class CourseGradeServiceImpl extends ServiceImpl<CourseGradeMapper, Cours
                     "GRADE");
             } catch (Exception e) {
                 log.warn("[成绩发布] 发送站内信失败 courseId={}", course.getId(), e);
+            }
+
+            // 邮件通道：异步批量发送，未配置 SMTP 时内部自动跳过。
+            // 放在 userIds 非空的判断内，避免无接收人时做无谓查询
+            try {
+                mailNoticeService.sendBatch(
+                    userIds,
+                    "成绩已发布",
+                    String.format("<p>《<b>%s</b>》的成绩已发布。</p>"
+                            + "<p>可登录系统在「我的成绩」中查看，"
+                            + "如对成绩有疑问请联系任课教师。</p>",
+                        course.getCourseName()));
+            } catch (Exception e) {
+                log.warn("[成绩发布] 发送邮件失败 courseId={}", course.getId(), e);
             }
         }
 

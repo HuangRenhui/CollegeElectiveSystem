@@ -17,6 +17,7 @@ import com.college.elective.mapper.StudentMapper;
 import com.college.elective.security.LoginUser;
 import com.college.elective.security.SecurityUtils;
 import com.college.elective.service.CourseSelectionService;
+import com.college.elective.service.MailNoticeService;
 import com.college.elective.service.MessageNoticeService;
 import com.college.elective.service.SemesterService;
 import com.college.elective.vo.ConflictVO;
@@ -107,6 +108,11 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
      * 站内信服务：选课成功后通知学生
      */
     private final MessageNoticeService messageNoticeService;
+
+    /**
+     * 邮件通知服务：选课成功后异步发提醒邮件（未配置 SMTP 时自动跳过）
+     */
+    private final MailNoticeService mailNoticeService;
 
     /**
      * 学期服务：选课开关与时间窗口以「当前学期」为准；冲突检测的学期由调用方显式传入
@@ -344,6 +350,16 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
                     course.getScheduleText() == null ? "待定" : course.getScheduleText()),
                 course.getId(),
                 "COURSE");
+
+            // 邮件通道：异步发送，不阻塞选课响应；未配置 SMTP 时内部自动跳过
+            mailNoticeService.sendToUser(
+                student.getUserId(),
+                "选课成功",
+                String.format("<p>你已成功选上《<b>%s</b>》（%s 学分）。</p>"
+                        + "<p>上课时间：%s</p>"
+                        + "<p>可登录系统在「我的课表」中查看完整安排。</p>",
+                    course.getCourseName(), course.getCredit(),
+                    course.getScheduleText() == null ? "待定" : course.getScheduleText()));
         } catch (Exception e) {
             log.warn("[站内信] 选课成功通知发送失败 studentId={}, courseId={}",
                 studentId, course.getId(), e);
