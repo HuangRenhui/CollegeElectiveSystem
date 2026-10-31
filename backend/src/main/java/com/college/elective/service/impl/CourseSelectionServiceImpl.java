@@ -571,8 +571,9 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
             if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(capacityKey))) {
                 return;
             }
-            rebuildCourseCacheLocked(courseId, course, lockToken);
-            log.info("[选课回源] 缓存重建完成 courseId={}", courseId);
+            if (rebuildCourseCacheLocked(courseId, course, lockToken)) {
+                log.info("[选课回源] 缓存重建完成 courseId={}", courseId);
+            }
         } finally {
             releaseRebuildLock(lockKey, lockToken);
         }
@@ -581,8 +582,15 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
     /**
      * 以「数据库有效选课 ∪ Redis 已有成员」重建缓存，保留尚未落库的预占，避免回源超选。
      * 调用前必须已持有回源锁；select/drop 脚本在锁存在时不会改这两个 key。
+     *
+     * <p><b>为什么必须校验脚本返回值</b>：脚本首行会比对锁令牌，
+     * 一旦本次重建耗时超过锁 TTL（锁被他人或过期清理拿走），脚本直接返回 0 且不做任何写入。
+     * 旧实现忽略返回值，日志照样打印「缓存重建完成」，
+     * 于是运维看到的是「同步正常」，实际缓存始终没写进去——掩盖真实故障。</p>
+     *
+     * @return {@code true} 表示脚本确实完成了写回；{@code false} 表示已失去锁、本次未写入
      */
-    private void rebuildCourseCacheLocked(Long courseId, Course course, String lockToken) {
+    private boolean rebuildCourseCacheLocked(Long courseId, Course course, String lockToken) {
         List<CourseSelection> validSelections =
             baseMapper.selectValidSelectionsByCourseIds(List.of(courseId));
         LinkedHashSet<String> members = new LinkedHashSet<>();
@@ -603,13 +611,21 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
         args.add(String.valueOf(RedisKeys.DEFAULT_CACHE_SECONDS));
         args.addAll(members);
 
-        stringRedisTemplate.execute(
+        Long result = stringRedisTemplate.execute(
             rebuildCourseCacheScript,
             List.of(
                 RedisKeys.COURSE_CAPACITY + courseId,
                 RedisKeys.COURSE_SELECTED + courseId,
-                RedisKeys.COURSE_SELECT_LOCK + courseId),
+                RedisKeys.COURSE_SELECT_LOCK + courseId,
+                // 临时集合 key：脚本分批写入后 RENAME 覆盖正式 key，避免残缺集合暴露给读请求
+                RedisKeys.COURSE_SELECTED + courseId + ":rebuild"),
             args.toArray());
+
+        if (result != null && result == 1L) {
+            return true;
+        }
+        log.warn("[选课回源] 已失去回源锁，本次重建未写入 courseId={}, members={}", courseId, members.size());
+        return false;
     }
 
     private void releaseRebuildLock(String lockKey, String lockToken) {
@@ -1091,6 +1107,7 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
         }
 
         int fixedCount = 0;
+        int skippedCount = 0;
         for (Course course : courses) {
             Long courseId = course.getId();
             Set<String> studentIds = studentIdsByCourse.getOrDefault(courseId, Set.of());
@@ -1123,9 +1140,10 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
             String lockToken = UUID.randomUUID().toString();
             Boolean locked = stringRedisTemplate.opsForValue()
                 .setIfAbsent(lockKey, lockToken, Duration.ofSeconds(CACHE_LOCK_TTL_SECONDS));
+            boolean written = false;
             if (Boolean.TRUE.equals(locked)) {
                 try {
-                    rebuildCourseCacheLocked(courseId, course, lockToken);
+                    written = rebuildCourseCacheLocked(courseId, course, lockToken);
                 } finally {
                     releaseRebuildLock(lockKey, lockToken);
                 }
@@ -1133,11 +1151,18 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
                 log.warn("[人数同步] 课程正在回源，跳过 Redis 写回 courseId={}", courseId);
             }
 
+            if (!written) {
+                // 未写回时不能记为「已校正」，否则任务日志会掩盖真实未修复的课程
+                skippedCount++;
+                continue;
+            }
+
             fixedCount++;
             log.info("[人数同步] 校正课程 courseId={}, 库内计数 {} -> {}, 集合 {} -> {}, 余量重算为 {}",
                 courseId, recorded, real, setSize, real, expected);
         }
-        log.info("[人数同步] 完成，共检查 {} 门课程，校正 {} 门", courses.size(), fixedCount);
+        log.info("[人数同步] 完成，共检查 {} 门课程，校正 {} 门，跳过 {} 门",
+            courses.size(), fixedCount, skippedCount);
     }
 
     /**
@@ -1248,12 +1273,14 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
         return result;
     }
 
+    /**
+     * 解析 Redis 中的剩余容量。
+     *
+     * <p>委托给 {@link RedisValueUtils}，与 {@code CourseServiceImpl} 共用同一套容错口径：
+     * 非法值一律视为「缓存缺失」并回源重建，避免一个脏 key 让课程列表接口 500。</p>
+     */
     private Integer parseCapacity(String value) {
-        try {
-            return Integer.valueOf(value);
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        return RedisValueUtils.parseNonNegativeInt(value);
     }
 
     // ==================== 教务代选（管理员） ====================
@@ -1604,8 +1631,13 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
         String seqValue = stringRedisTemplate.opsForValue().get(tokenKey);
         long now = System.currentTimeMillis();
 
-        // 令牌不存在：可能已超时、已选课成功或从未取号，统一提示重新取号
-        if (seqValue == null) {
+        // 令牌不存在或内容非法：可能已超时、已选课成功、从未取号，或被写入了脏值，
+        // 统一提示重新取号（脏值不能直接 Long.parseLong，否则整个状态接口 500）
+        Long mySeq = RedisValueUtils.parseLong(seqValue);
+        if (mySeq == null) {
+            if (seqValue != null) {
+                log.warn("[排队] 令牌内容不是合法排队号，按失效处理 courseId={}, value={}", courseId, seqValue);
+            }
             QueueStatusVO vo = buildQueueStatus(courseId, 0L, now, 0L);
             vo.setTokenValid(false);
             vo.setMessage("排队令牌已失效，请重新取号");
@@ -1613,7 +1645,7 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
         }
 
         Long ttl = stringRedisTemplate.getExpire(tokenKey, TimeUnit.SECONDS);
-        return buildQueueStatus(courseId, Long.parseLong(seqValue), now, ttl);
+        return buildQueueStatus(courseId, mySeq, now, ttl);
     }
 
     @Override
@@ -1649,12 +1681,19 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
         String tokenKey = RedisKeys.SELECTION_TOKEN + courseId + ":" + studentId;
         String seqValue = stringRedisTemplate.opsForValue().get(tokenKey);
         // 无令牌：放行，兼顾可用性（详见方法注释）
-        if (seqValue == null) {
+        Long mySeq = RedisValueUtils.parseLong(seqValue);
+        // 令牌内容非法时同样按「无令牌」放行：限流是软约束，
+        // 不能因为一个脏 key 让该学生彻底无法选课（超卖仍由 Lua 脚本兜底）
+        if (mySeq == null) {
+            if (seqValue != null) {
+                log.warn("[排队] 令牌内容不是合法排队号，按无令牌放行 courseId={}, studentId={}, value={}",
+                    courseId, studentId, seqValue);
+            }
             return;
         }
 
         Long tokenTtl = stringRedisTemplate.getExpire(tokenKey, TimeUnit.SECONDS);
-        QueueStatusVO status = buildQueueStatus(courseId, Long.parseLong(seqValue),
+        QueueStatusVO status = buildQueueStatus(courseId, mySeq,
                 System.currentTimeMillis(), tokenTtl);
         // 有令牌但尚未叫到：直接拒绝，避免无效请求穿透到数据库
         if (status.getMySeq() > status.getCurrentSeq()) {
@@ -1686,11 +1725,16 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
 
         String startAtValue = stringRedisTemplate.opsForValue()
             .get(RedisKeys.SELECTION_QSTART + courseId);
-        long startAt = startAtValue == null ? now : Long.parseLong(startAtValue);
+        // 起始时刻可能被写脏：解析失败按「刚刚开始排队」处理（now），而不是抛异常让状态接口 500
+        long startAt = RedisValueUtils.parseLong(startAtValue, now);
+
+        // 放行速率必须为正：配置成 0 或负数时叫号进度恒为 0，整个队列永远不会前进，
+        // 表现为「所有学生都在排队且预计等待时间异常」
+        int perSecond = Math.max(1, queue.getQueuePerSecond());
 
         // 已放行到的排队号：按时间线性推进，无定时器依赖
         long elapsedSeconds = Math.max(0L, (now - startAt) / 1000);
-        long currentSeq = elapsedSeconds * queue.getQueuePerSecond();
+        long currentSeq = elapsedSeconds * perSecond;
 
         Long queuedCount = stringRedisTemplate.opsForZSet()
             .zCard(RedisKeys.SELECTION_QUEUE + courseId);
@@ -1709,7 +1753,7 @@ public class CourseSelectionServiceImpl extends ServiceImpl<CourseSelectionMappe
         vo.setTokenTtlSeconds(tokenTtl == null ? 0L : tokenTtl);
 
         long waitSeconds = admitted ? 0L
-            : (long) Math.ceil((mySeq - currentSeq) / (double) queue.getQueuePerSecond());
+            : (long) Math.ceil((mySeq - currentSeq) / (double) perSecond);
         vo.setEstimatedWaitSeconds(waitSeconds);
         vo.setMessage(buildQueueMessage(admitted, tokenValid, waitSeconds));
         return vo;
