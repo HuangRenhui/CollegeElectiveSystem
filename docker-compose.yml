@@ -61,6 +61,23 @@ services:
       JWT_SECRET: CollegeElectiveSystemSecretKeyForJwtTokenMustBeLongEnough2026
     ports:
       - "8080:8080"
+    # 与 Dockerfile 中的探活保持一致：/api/v3/api-docs 在 prod 已关闭，不能用它探活
+    healthcheck:
+      test: [ "CMD", "curl", "-fsS", "http://localhost:8080/api/health" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    # 给优雅停机留出时间：Spring 需要把进行中的选课事务处理完再退出
+    stop_grace_period: 40s
+    # 单实例默认资源上限，避免一条慢查询把宿主机拖垮（按实际机器规格调整）。
+    # 取值依据：JVM -Xmx1024m + 元空间/直接内存/线程栈，留出约 700M 余量；
+    # 若把上限压到接近 Xmx，容器会在内存回收时被 OOMKilled 而不是抛 Java OOM
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1792M
 
   frontend:
     build:
@@ -69,9 +86,22 @@ services:
     container_name: elective-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_started
     ports:
       - "80:80"
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost/" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
 volumes:
   mysql-data:

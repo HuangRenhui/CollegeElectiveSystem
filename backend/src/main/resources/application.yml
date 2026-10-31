@@ -1,5 +1,9 @@
 server:
   port: 8080
+  # 优雅停机：发布时不再直接切断进行中的请求。
+  # 选课链路是「Redis 预占 → 数据库提交」两段式，请求被硬断会留下预占未归还，
+  # 只能等人数同步任务兜底（最长 5 分钟），这段时间内该课程余量是偏小的。
+  shutdown: graceful
   servlet:
     context-path: /api
     encoding:
@@ -7,7 +11,10 @@ server:
       force: true
   tomcat:
     threads:
-      max: 500
+      # 与数据库连接池上限保持约 2:1 的比例。
+      # 原值 500 而连接池仅 100，多出来的 400 个线程只会阻塞在获取连接上，
+      # 既占内存又把「排队」这个信号从线程池转移到了看不见的连接池超时里
+      max: 200
       min-spare: 50
     max-connections: 10000
     accept-count: 1000
@@ -15,6 +22,9 @@ server:
 spring:
   application:
     name: college-elective-system
+  # 优雅停机的最长等待时间，需大于单次选课事务的最长耗时
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
   profiles:
     active: dev
   jackson:
@@ -74,6 +84,12 @@ elective:
     lock-wait-millis: 300
     # 是否开启选课开关（管理员可动态关闭）
     enabled: true
+    # ---------- 一致性兜底任务 ----------
+    # 是否启用「人数/缓存同步」定时任务。出问题时改配置即可停用，无需改代码重新构建
+    sync-enabled: true
+    # 选课通道开启时是否跳过本轮同步。默认 false；
+    # 开学选课高峰等敏感时段建议临时置为 true，彻底避免同步任务与选课争抢回源锁
+    sync-skip-when-open: false
     # ---------- 选课排队（高峰期削峰，默认关闭） ----------
     # 是否启用排队。关闭时选课链路与原先完全一致，无任何额外开销
     queue-enabled: false

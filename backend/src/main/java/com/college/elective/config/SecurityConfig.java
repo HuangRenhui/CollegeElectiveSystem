@@ -55,6 +55,8 @@ public class SecurityConfig {
      */
     private static final String[] WHITE_LIST = {
             "/auth/login",
+            // 容器探活：不依赖任何外部存储，也无敏感信息，放行不会扩大攻击面
+            "/health",
             "/wx/enabled",
             "/wx/login",
             "/wx/bind",

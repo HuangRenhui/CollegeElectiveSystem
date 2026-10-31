@@ -29,7 +29,10 @@ COPY --from=builder /app/target/college-elective-system.jar ./app.jar
 
 EXPOSE 8080
 
+# 探活必须指向永远存在的端点。
+# 原值 /api/v3/api-docs 在 prod 已被 springdoc.api-docs.enabled=false 关闭，
+# 健康检查因此恒定 404，容器永久 unhealthy。
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080/api/v3/api-docs || exit 1
+    CMD curl -fsS http://localhost:8080/api/health || exit 1
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar --spring.profiles.active=${SPRING_PROFILES_ACTIVE:-prod}"]
