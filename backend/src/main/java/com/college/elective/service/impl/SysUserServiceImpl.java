@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.college.elective.common.BusinessException;
 import com.college.elective.common.Constants;
 import com.college.elective.common.RedisKeys;
+import com.college.elective.common.RedisValueUtils;
 import com.college.elective.common.ResultCode;
 import com.college.elective.dto.ChangePasswordDTO;
 import com.college.elective.dto.LoginDTO;
@@ -47,8 +48,16 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> implements SysUserService {
 
-    /** 连续登录失败锁定阈值 */
+    /** 连续登录失败锁定阈值（按「账号 + 来源IP」统计） */
     private static final int MAX_LOGIN_FAIL = 5;
+    /**
+     * 同一来源 IP 的失败次数上限（跨账号累计）。
+     *
+     * <p>单个账号的失败计数带 IP 后，攻击者仍可换个账号继续撞库：
+     * 每对「账号+IP」都只有 1 次失败，永远触不到阈值。
+     * 因此额外按来源 IP 累计，超过本阈值即整体拒绝。</p>
+     */
+    private static final int MAX_LOGIN_FAIL_PER_IP = 30;
     /** 锁定时间（分钟） */
     private static final long LOCK_MINUTES = 15L;
 
@@ -65,13 +74,21 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     @Override
     public LoginVO login(LoginDTO loginDTO, String clientIp) {
         String username = StrUtil.trim(loginDTO.getUsername());
-        String failKey = RedisKeys.LOGIN_FAIL + username;
+        String ip = StrUtil.blankToDefault(clientIp, "unknown");
 
-        String failCountStr = stringRedisTemplate.opsForValue().get(failKey);
-        int failCount = failCountStr == null ? 0 : Integer.parseInt(failCountStr);
-        if (failCount >= MAX_LOGIN_FAIL) {
+        // 失败计数按「账号 + 来源IP」统计：只锁住攻击者这条来源，
+        // 不会因为别人连错密码就把受害者的账号锁死（否则任何人可锁死管理员）
+        String accountFailKey = RedisKeys.LOGIN_FAIL_ACCOUNT + username + ":" + ip;
+        String ipFailKey = RedisKeys.LOGIN_FAIL_IP + ip;
+
+        int accountFailCount = readFailCount(accountFailKey);
+        if (accountFailCount >= MAX_LOGIN_FAIL) {
             throw new BusinessException(ResultCode.ACCOUNT_DISABLED,
                     "登录失败次数过多，账号已临时锁定，请 " + LOCK_MINUTES + " 分钟后再试");
+        }
+        int ipFailCount = readFailCount(ipFailKey);
+        if (ipFailCount >= MAX_LOGIN_FAIL_PER_IP) {
+            throw new BusinessException(ResultCode.LOGIN_ATTEMPT_LIMITED);
         }
 
         SysUser user = getOne(Wrappers.<SysUser>lambdaQuery()
@@ -79,7 +96,8 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
                 .last("LIMIT 1"));
 
         if (user == null || !passwordEncoder.matches(loginDTO.getPassword(), user.getPassword())) {
-            recordLoginFail(failKey);
+            recordLoginFail(accountFailKey);
+            recordLoginFail(ipFailKey);
             throw new BusinessException(ResultCode.LOGIN_FAILED);
         }
 
@@ -87,8 +105,10 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
             throw new BusinessException(ResultCode.ACCOUNT_DISABLED);
         }
 
-        // 登录成功：清除失败计数，避免历史失败次数影响后续登录
-        stringRedisTemplate.delete(failKey);
+        // 登录成功：清除失败计数，避免历史失败次数影响后续登录。
+        // IP 维度计数不在成功时清零：它统计的是该来源的整体可疑程度，
+        // 只在窗口期自然过期，否则攻击者用已知的正确账号即可反复重置计数
+        stringRedisTemplate.delete(accountFailKey);
         cacheUserExtension(user);
 
         String token = tokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole());
@@ -115,12 +135,23 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     }
 
     /**
-     * 记录一次登录失败，用于账号锁定判定。
+     * 读取失败计数，脏值按 0 处理。
+     *
+     * <p>计数 key 由脚本维护，理论上恒为整数；但人工排查时可能写入非数字，
+     * 直接 {@code Integer.parseInt} 会让登录接口 500（登录功能整体不可用），
+     * 这里按「无失败记录」兜底。</p>
+     */
+    private int readFailCount(String key) {
+        Integer count = RedisValueUtils.parseInt(stringRedisTemplate.opsForValue().get(key));
+        return count == null ? 0 : count;
+    }
+
+    /**
+     * 记录一次登录失败，用于锁定判定。
      *
      * <p>失败次数累加 1；若本次为首次失败（计数为 1），
      * 则设置 {@code LOCK_MINUTES} 分钟的过期时间作为锁定窗口。
-     * 窗口内失败次数达到 {@code MAX_LOGIN_FAIL} 后账号被临时锁定，
-     * 待 Key 过期后自动解锁。</p>
+     * 窗口内失败次数达到阈值后被临时锁定，待 Key 过期后自动解锁。</p>
      *
      * <p>计数与设置过期时间由 {@code lua/record_login_fail.lua} 在同一次
      * Redis 执行中完成。若拆为两条命令，一旦在两者之间发生连接中断，
@@ -129,7 +160,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
      * <p>脚本仅在首次失败时设置过期时间，后续失败不续期，
      * 避免攻击者通过慢速重试无限延长尝试窗口。</p>
      *
-     * @param failKey 登录失败计数在 Redis 中的键，形如 {@code elective:login:fail:{username}}
+     * @param failKey 登录失败计数在 Redis 中的键
      */
     private void recordLoginFail(String failKey) {
         // 过期时间以秒为单位传入脚本（ARGV 仅接受字符串）

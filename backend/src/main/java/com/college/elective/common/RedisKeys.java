@@ -17,8 +17,21 @@ public final class RedisKeys {
     public static final String AUTH_TOKEN = PREFIX + "auth:token:";
     /** 登录用户信息缓存：elective:auth:user:{userId} */
     public static final String AUTH_USER = PREFIX + "auth:user:";
-    /** 登录失败次数：elective:auth:fail:{username} */
-    public static final String LOGIN_FAIL = PREFIX + "auth:fail:";
+    /**
+     * 账号维度登录失败次数：elective:auth:fail:account:{username}:{ip}
+     *
+     * <p><b>为什么带 IP</b>：若只按 username 计数，任何人只要连错 5 次密码
+     * 就能把任意已知账号（包括管理员）锁死 15 分钟，等同于一个免费的拒绝服务入口。
+     * 带上来源 IP 后，攻击者只能锁住「自己这条来源」，无法影响其它人正常登录。</p>
+     */
+    public static final String LOGIN_FAIL_ACCOUNT = PREFIX + "auth:fail:account:";
+    /**
+     * 来源 IP 维度登录失败总次数：elective:auth:fail:ip:{ip}
+     *
+     * <p>用于识别「同一来源撞库多个账号」：单个账号的失败次数可能一直低于阈值，
+     * 但累计失败数会快速堆积。</p>
+     */
+    public static final String LOGIN_FAIL_IP = PREFIX + "auth:fail:ip:";
 
     // ---------------------------- 课程缓存 ----------------------------
     /** 课程详情：elective:course:info:{courseId} */
