@@ -8,6 +8,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.college.elective.common.BusinessException;
 import com.college.elective.common.Constants;
 import com.college.elective.common.PageResult;
+import com.college.elective.common.Pages;
+import com.college.elective.common.RedisValueUtils;
 import com.college.elective.common.ScheduleConflictUtils;
 import com.college.elective.common.RedisKeys;
 import com.college.elective.common.ResultCode;
@@ -43,6 +45,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -81,6 +84,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     @Override
     public PageResult<Course> pageCourses(CourseQueryDTO query) {
+        // 分页插件已统一收敛越界参数，此处再归一化一次，保证返回体里的 current/size 与预期一致
+        query.setPageNum(Pages.pageNum(query.getPageNum()));
+        query.setPageSize(Pages.pageSize(query.getPageSize()));
         IPage<Course> page = baseMapper.selectCoursePage(new Page<>(query.getPageNum(), query.getPageSize()), query);
         fillRemainingCapacity(page.getRecords());
         return PageResult.of(page);
@@ -146,19 +152,32 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         // 一次请求取回全部余量，返回列表的索引与 keys 严格对应
         List<String> values = stringRedisTemplate.opsForValue().multiGet(keys);
 
+        List<Long> dirtyCourseIds = new ArrayList<>();
         for (int i = 0; i < courses.size(); i++) {
             Course course = courses.get(i);
             // multiGet 可能整体返回 null，需先判空再按下标取值
             String value = values == null ? null : values.get(i);
 
-            if (value != null) {
-                // 命中缓存：以 Redis 中的实时余量为准
-                course.setRemainingCapacity(Integer.parseInt(value));
+            // 命中缓存：以 Redis 中的实时余量为准；
+            // 值被写脏（非数字/负数）时按「缓存未命中」处理，不能直接 parseInt 让列表接口 500
+            Integer cached = RedisValueUtils.parseNonNegativeInt(value);
+            if (cached != null) {
+                course.setRemainingCapacity(cached);
             } else {
+                if (value != null) {
+                    dirtyCourseIds.add(course.getId());
+                }
                 // 未命中缓存：退化为数据库推算值，并保证余量不为负数
+                int maxCapacity = course.getMaxCapacity() == null ? 0 : course.getMaxCapacity();
                 int selected = course.getSelectedCount() == null ? 0 : course.getSelectedCount();
-                course.setRemainingCapacity(Math.max(course.getMaxCapacity() - selected, 0));
+                course.setRemainingCapacity(Math.max(maxCapacity - selected, 0));
             }
+        }
+
+        // 按请求汇总一条告警，而不是逐门课程打印：
+        // 一个持续被写脏的 key 会让列表接口每次请求都刷出 N 条 warn，把日志淹没
+        if (!dirtyCourseIds.isEmpty()) {
+            log.warn("检测到非法的课程余量缓存值，已按数据库推算兜底 courseIds={}", dirtyCourseIds);
         }
     }
 
@@ -208,9 +227,10 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
         saveSchedules(course.getId(), course.getSemesterId(), dto.getSchedules());
 
-        // 新课程立即写入 Redis 余量
-        stringRedisTemplate.opsForValue().set(
-                RedisKeys.COURSE_CAPACITY + course.getId(), String.valueOf(course.getMaxCapacity()));
+        // 新课程立即写入 Redis 余量。
+        // 必须带 TTL：与预热路径（preloadCourseCache）保持同一生命周期，
+        // 否则该 key 永不过期，Redis 内存淘汰策略下会变成「不确定何时消失」的悬空状态
+        writeCapacityCache(course.getId(), course.getMaxCapacity());
 
         log.info("新增课程成功: {} ({})", course.getCourseName(), course.getCourseCode());
         return course.getId();
@@ -234,7 +254,13 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
                 .eq(CourseSelection::getCourseId, dto.getId())
                 .eq(CourseSelection::getStatus, Constants.SELECTION_SELECTED));
         long selected = selectedCount == null ? 0L : selectedCount;
-        if (dto.getMaxCapacity() < selected) {
+
+        // Service 层自行校验容量非空：Controller 上的 @NotNull 只覆盖经过该 Controller 的请求，
+        // 直接解引用会在其它入口（定时任务、内部调用、新增 Controller）退化为 NPE → 500
+        Integer maxCapacityValue = dto.getMaxCapacity();
+        BusinessException.throwIf(maxCapacityValue == null, ResultCode.PARAM_ERROR, "课程容量不能为空");
+        int maxCapacity = maxCapacityValue;
+        if (maxCapacity < selected) {
             throw new BusinessException(ResultCode.PARAM_ERROR,
                     "课程容量不能小于已选人数（当前已选 " + selected + " 人）");
         }
@@ -254,12 +280,36 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             saveSchedules(dto.getId(), semesterId, dto.getSchedules());
         }
 
-        // 容量变化时更新 Redis 余量
-        int remaining = Math.max(dto.getMaxCapacity() - (int) selected, 0);
-        stringRedisTemplate.opsForValue().set(
-                RedisKeys.COURSE_CAPACITY + dto.getId(), String.valueOf(remaining));
+        // 容量变化时更新 Redis 余量（同样带 TTL，口径与预热路径一致）
+        writeCapacityCache(dto.getId(), Math.max(maxCapacity - (int) selected, 0));
 
         log.info("修改课程成功: id={}, {}", dto.getId(), dto.getCourseName());
+    }
+
+    /**
+     * 写入课程余量缓存，并设置与预热路径一致的过期时间。
+     *
+     * <p><b>为什么必须带 TTL</b>：课程容量 key 与「已选学生集合」共享生命周期。
+     * 若此处写入不带 TTL，而集合 key 由选课脚本带 TTL 写入，
+     * 两者就会在过期时间上错位——容量常驻、集合消失，
+     * 表现为「余量始终正常但学生被判为未选」。
+     * 统一走本方法可避免新增/修改课程与预热/选课两条路径的 TTL 口径漂移。</p>
+     *
+     * @param courseId  课程ID
+     * @param remaining 剩余容量，为 {@code null} 时不写缓存（由查询侧按数据库兜底）
+     */
+    private void writeCapacityCache(Long courseId, Integer remaining) {
+        if (courseId == null) {
+            return;
+        }
+        if (remaining == null) {
+            log.warn("课程剩余容量为空，跳过余量缓存写入 courseId={}", courseId);
+            return;
+        }
+        stringRedisTemplate.opsForValue().set(
+                RedisKeys.COURSE_CAPACITY + courseId,
+                String.valueOf(Math.max(remaining, 0)),
+                Duration.ofMinutes(RedisKeys.DEFAULT_CACHE_MINUTES));
     }
 
     /**

@@ -17,8 +17,15 @@ end
 local ttl = tonumber(ARGV[2])
 
 if redis.call('SREM', KEYS[2], ARGV[1]) == 1 then
-    if redis.call('EXISTS', KEYS[1]) == 1 then
-        redis.call('INCR', KEYS[1])
+    local capacity = redis.call('GET', KEYS[1])
+    if capacity ~= false then
+        -- 容量值被写脏时不能 INCR：Redis 会直接报
+        -- "value is not an integer or out of range"，整条退课请求变成 500。
+        -- 此时跳过归还即可——脏值本身会让下一次选课返回 3 并触发回源重建，
+        -- 重建以数据库为准，余量会被纠正，不会留下永久偏差
+        if tonumber(capacity) ~= nil then
+            redis.call('INCR', KEYS[1])
+        end
     end
     -- 续期，保持与容量 key 同一生命周期，避免集合残留而容量已回源
     if ttl and ttl > 0 then

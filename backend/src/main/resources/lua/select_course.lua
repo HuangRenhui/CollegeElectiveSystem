@@ -24,7 +24,15 @@ if redis.call('SISMEMBER', KEYS[2], ARGV[1]) == 1 then
     return 1
 end
 
-if tonumber(capacity) <= 0 then
+-- 容量值必须是合法数字：被人工改脏（如写成 "abc"）时不能直接比较，
+-- 否则 Lua 会抛 "attempt to compare nil with number"，整个请求变成 500。
+-- 此处按「缓存不可用」返回 3，交由调用方回源重建自愈。
+local capacityNumber = tonumber(capacity)
+if capacityNumber == nil then
+    return 3
+end
+
+if capacityNumber <= 0 then
     return 2
 end
 
