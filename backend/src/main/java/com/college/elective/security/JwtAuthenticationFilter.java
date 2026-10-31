@@ -47,17 +47,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (StringUtils.hasText(token) && SecurityContextHolder.getContext().getAuthentication() == null) {
             Claims claims = tokenProvider.parseToken(token);
-            if (claims != null) {
-                Long userId = Long.valueOf(claims.getSubject());
-                // 校验令牌白名单，支持服务端主动注销
-                if (tokenProvider.isTokenValid(userId, token)) {
-                    LoginUser loginUser = buildLoginUser(claims);
-
-                    // 滑动过期：剩余有效期不足时自动续期
+            Long userId = claims == null ? null : parseUserId(claims);
+            // 校验令牌白名单，支持服务端主动注销
+            if (userId != null && tokenProvider.isTokenValid(userId, token)) {
+                if (tokenProvider.isSessionExpired(claims)) {
+                    // 超过绝对有效期：即使白名单仍在也不放行，并顺手清理，
+                    // 避免「已经不该存在的会话」继续占用 Redis 直到过期
+                    tokenProvider.invalidateToken(userId);
+                    log.info("[认证] 会话已超过最大有效期，要求重新登录 userId={}", userId);
+                } else {
+                    // 滑动过期：剩余有效期不足时自动续期（受绝对有效期约束）
                     if (tokenProvider.shouldRefresh(userId)) {
                         tokenProvider.refreshToken(userId, token);
                     }
 
+                    LoginUser loginUser = buildLoginUser(claims, userId);
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(loginUser, null, loginUser.getAuthorities());
                     authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
@@ -69,10 +73,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     /**
+     * 从令牌声明中解析用户ID，非法值返回 {@code null}。
+     *
+     * <p>签名校验通过后 subject 理论上一定是数字，但令牌可能是历史版本或人工构造，
+     * 直接 {@code Long.valueOf} 抛出的 {@link NumberFormatException} 会穿透过滤器，
+     * 变成 500 而不是干净的 401。</p>
+     */
+    private Long parseUserId(Claims claims) {
+        String subject = claims.getSubject();
+        if (!StringUtils.hasText(subject)) {
+            return null;
+        }
+        try {
+            return Long.valueOf(subject);
+        } catch (NumberFormatException e) {
+            log.debug("[认证] 令牌 subject 不是合法用户ID: {}", subject);
+            return null;
+        }
+    }
+
+    /**
      * 从 JWT 声明还原登录用户，学生/教师ID 由 Redis 中的登录缓存补充。
      */
-    private LoginUser buildLoginUser(Claims claims) {
-        Long userId = Long.valueOf(claims.getSubject());
+    private LoginUser buildLoginUser(Claims claims, Long userId) {
         String role = claims.get("role", String.class);
         LoginUser loginUser = new LoginUser(
                 userId,

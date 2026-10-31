@@ -27,6 +27,14 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class JwtTokenProvider {
 
+    /**
+     * 会话绝对到期时刻的声明名（epoch 毫秒）。
+     *
+     * <p>该声明只在签发时写入一次，续期时不会刷新，
+     * 因此它是判断「会话是否已到期」的唯一权威依据。</p>
+     */
+    private static final String CLAIM_ABSOLUTE_EXPIRE = "absExp";
+
     private final ElectiveProperties properties;
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -56,10 +64,12 @@ public class JwtTokenProvider {
     public String generateToken(Long userId, String username, String role) {
         long expireSeconds = properties.getJwt().getExpireSeconds();
         Date now = new Date();
-        Map<String, Object> claims = new HashMap<>(4);
+        Map<String, Object> claims = new HashMap<>(5);
         claims.put("uid", userId);
         claims.put("username", username);
         claims.put("role", role);
+        // 会话绝对到期时刻（epoch 毫秒）：滑动续期不得越过该时间点
+        claims.put(CLAIM_ABSOLUTE_EXPIRE, now.getTime() + properties.getJwt().getMaxSessionSeconds() * 1000);
 
         String token = Jwts.builder()
             .claims(claims)
@@ -122,6 +132,54 @@ public class JwtTokenProvider {
         }
         long remainingSeconds = (expiration.getTime() - System.currentTimeMillis()) / 1000;
         return remainingSeconds < properties.getJwt().getRefreshThresholdSeconds();
+    }
+
+    /**
+     * 会话是否已超过绝对有效期。
+     *
+     * <p><b>这是滑动续期的刹车</b>：白名单有效只说明「令牌没被注销」，
+     * 不代表「会话还该继续」。若不做绝对上限，只要客户端持续发请求，
+     * 令牌可以被永久续期，泄露的令牌等同于永久通行证。</p>
+     *
+     * <p><b>为什么对历史令牌也能判定</b>：缺少 {@code absExp} 声明的旧令牌，
+     * 按「签发时间 + 最大会话时长」推算，判定口径保持一致。</p>
+     *
+     * @param claims 令牌声明
+     * @return {@code true} 表示会话已到期，必须重新登录
+     */
+    public boolean isSessionExpired(Claims claims) {
+        if (claims == null) {
+            return true;
+        }
+        long absoluteExpireAt = resolveAbsoluteExpireAt(claims);
+        return absoluteExpireAt <= 0 || System.currentTimeMillis() >= absoluteExpireAt;
+    }
+
+    /**
+     * 是否仍允许滑动续期（未超过绝对有效期）。
+     *
+     * @param claims 令牌声明
+     * @return {@code true} 表示可以继续续期
+     */
+    public boolean canRefresh(Claims claims) {
+        return !isSessionExpired(claims);
+    }
+
+    /**
+     * 解析会话绝对到期时刻（epoch 毫秒）。
+     */
+    private long resolveAbsoluteExpireAt(Claims claims) {
+        Object raw = claims.get(CLAIM_ABSOLUTE_EXPIRE);
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        // 兼容上线前签发的令牌：无 absExp 声明时按签发时间推算
+        Date issuedAt = claims.getIssuedAt();
+        if (issuedAt != null) {
+            return issuedAt.getTime() + properties.getJwt().getMaxSessionSeconds() * 1000;
+        }
+        Date expiration = claims.getExpiration();
+        return expiration == null ? 0L : expiration.getTime();
     }
 
     /**

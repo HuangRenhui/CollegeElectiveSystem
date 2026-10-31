@@ -27,6 +27,16 @@ public class ElectiveProperties {
         private long expireSeconds = 7200L;
         /** 剩余有效期低于该值时自动续期（秒） */
         private long refreshThresholdSeconds = 600L;
+        /**
+         * 会话绝对有效期（秒），默认 7 天。
+         *
+         * <p><b>为什么需要它</b>：令牌采用「Redis 白名单 + 滑动续期」，
+         * 只要持续有请求就会不断把有效期续满 {@code expireSeconds}，
+         * JWT 自身的 {@code exp} 等于形同虚设——一个泄露的令牌可以被无限续命。
+         * 因此引入绝对上限：自首次签发起超过本值后，无论白名单是否仍在，
+         * 都必须重新登录。这同时也是「登录态最多能存活多久」的业务口径。</p>
+         */
+        private long maxSessionSeconds = 604800L;
         /** 令牌所在请求头 */
         private String header = "Authorization";
         /** 令牌前缀 */
