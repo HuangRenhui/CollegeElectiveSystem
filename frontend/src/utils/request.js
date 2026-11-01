@@ -72,21 +72,32 @@ service.interceptors.response.use(
   (error) => {
     NProgress.done()
     const status = error.response?.status
+    // 后端已按语义返回真实 HTTP 状态码，响应体里带有可读的业务提示，
+    // 优先透传该提示，避免把所有 4xx 都显示成「网络异常」
+    const serverMessage = error.response?.data?.message
 
     if (status === 401) {
-      handleUnauthorized()
+      handleUnauthorized(serverMessage)
       return Promise.reject(error)
     }
     if (status === 403) {
-      ElMessage.error('没有操作权限，请联系管理员')
+      ElMessage.error(serverMessage || '没有操作权限，请联系管理员')
       return Promise.reject(error)
     }
     if (status === 404) {
-      ElMessage.error('请求的接口不存在')
+      ElMessage.error(serverMessage || '请求的接口不存在')
       return Promise.reject(error)
     }
-    if (status === 500) {
-      ElMessage.error('服务器内部错误，请联系管理员')
+    if (status === 429) {
+      ElMessage.error(serverMessage || '操作过于频繁，请稍后再试')
+      return Promise.reject(error)
+    }
+    if (status >= 500) {
+      ElMessage.error(serverMessage || '服务器内部错误，请联系管理员')
+      return Promise.reject(error)
+    }
+    if (serverMessage) {
+      ElMessage.error(serverMessage)
       return Promise.reject(error)
     }
 
@@ -98,11 +109,20 @@ service.interceptors.response.use(
   }
 )
 
+/** 上次弹出登录失效提示的时刻，用于「取消」后的静默窗口 */
+let lastReloginPromptAt = 0
+/** 取消提示后的静默时长：期间不再重复弹窗，避免并发请求刷屏 */
+const RELOGIN_SILENT_MS = 5000
+
 /**
  * 统一处理登录失效：提示后跳转登录页。
+ *
+ * <p>「取消」不再等同于「确认」：用户可能正在填写表单，
+ * 误点取消就被强制登出并丢失页面，体验与预期都不对。
+ * 取消时保留登录态、留在当前页，仅进入短暂静默窗口。</p>
  */
 function handleUnauthorized(message) {
-  if (isReloginPrompted) {
+  if (isReloginPrompted || Date.now() - lastReloginPromptAt < RELOGIN_SILENT_MS) {
     return
   }
   isReloginPrompted = true
@@ -117,9 +137,8 @@ function handleUnauthorized(message) {
       redirectToLogin()
     })
     .catch(() => {
-      const userStore = useUserStore()
-      userStore.resetState()
-      redirectToLogin()
+      // 用户选择稍后处理：不清登录态、不跳转
+      lastReloginPromptAt = Date.now()
     })
     .finally(() => {
       isReloginPrompted = false

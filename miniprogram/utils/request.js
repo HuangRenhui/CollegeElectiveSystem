@@ -26,6 +26,13 @@ function request(options) {
   const { url, method = 'GET', data = {}, silent = false } = options
 
   return new Promise((resolve, reject) => {
+    // 已在处理登录失效：直接拒绝，不再发请求。
+    // 否则跳转登录页的等待窗口里，后续请求仍会打到后端并各自弹出提示
+    if (isHandlingUnauthorized) {
+      reject(new Error('登录状态已失效'))
+      return
+    }
+
     const token = wx.getStorageSync(config.storageKeys.token)
     const header = { 'Content-Type': 'application/json;charset=UTF-8' }
     if (token) {
@@ -49,14 +56,21 @@ function request(options) {
         }
 
         if (res.statusCode === 403) {
-          showError(silent, '没有操作权限')
-          reject(new Error('没有操作权限'))
+          // 后端 403 可能来自权限拦截（无 message）或业务码 2007（带更具体的说明），
+          // 有就用后端文案，避免把所有越权都提示成同一句笼统的话
+          const message = (body && body.message) || '没有操作权限'
+          showError(silent, message)
+          reject(new Error(message))
           return
         }
 
         if (res.statusCode !== 200) {
-          showError(silent, `请求失败（${res.statusCode}）`)
-          reject(new Error(`请求失败（${res.statusCode}）`))
+          // 后端按语义返回真实状态码，响应体里带有可读提示（限流、参数错误、系统异常等），
+          // 优先透传，避免统一显示成「请求失败（400）」这种无信息量的文案
+          const message = (body && body.message) ||
+            (res.statusCode === 429 ? '操作过于频繁，请稍后再试' : `请求失败（${res.statusCode}）`)
+          showError(silent, message)
+          reject(new Error(message))
           return
         }
 
@@ -113,6 +127,8 @@ function handleUnauthorized() {
 
   wx.showToast({ title: '登录已失效，请重新登录', icon: 'none' })
 
+  // 标记位在 reLaunch 完成前保持为 true（request 入口会直接拒绝），
+  // 因此这里只需留出极短的提示时间，原 800ms 会让后续请求继续下发
   setTimeout(() => {
     wx.reLaunch({
       url: '/pages/login/index',
@@ -120,7 +136,7 @@ function handleUnauthorized() {
         isHandlingUnauthorized = false
       }
     })
-  }, 800)
+  }, 300)
 }
 
 // ------------------------------ 语法糖 ------------------------------
