@@ -487,12 +487,15 @@ AppID 选「测试号」，并在本地设置中勾选「不校验合法域名�
 
 ## 接口文档
 
-系统集成 **Knife4j**，启动后端后访问：
+系统集成 **Knife4j**，以 `dev` 环境启动后端后访问：
 
 - Knife4j 增强文档：http://localhost:8080/api/doc.html
 - OpenAPI 原始文档：http://localhost:8080/api/v3/api-docs
 
 > 在文档页面右上角「Authorize」处填入登录接口返回的 `token`，即可直接调试需鉴权的接口。
+
+> ⚠️ `prod` 环境已通过 `springdoc.api-docs.enabled=false` 关闭接口文档，
+> 上述两个地址在生产**不可用**（改用 `GET /api/health` 做健康检查）。
 
 ### 接口分组
 

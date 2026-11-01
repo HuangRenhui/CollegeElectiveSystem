@@ -452,12 +452,15 @@ and enable *"Skip domain validation"* under local settings. The API base URL is 
 
 ## API Documentation
 
-Powered by **Knife4j**:
+Powered by **Knife4j** (available in the `dev` profile):
 
 - Knife4j UI: http://localhost:8080/api/doc.html
 - OpenAPI JSON: http://localhost:8080/api/v3/api-docs
 
 Use the **Authorize** button and paste the `token` returned by the login API to test secured endpoints.
+
+> ⚠️ In the `prod` profile both endpoints are disabled
+> (`springdoc.api-docs.enabled=false`); use `GET /api/health` for liveness checks instead.
 
 ### Endpoint Groups
 
